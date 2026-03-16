@@ -1,0 +1,76 @@
+import { NextRequest, NextResponse } from "next/server";
+import pool from "@/lib/db";
+import bcrypt from "bcryptjs";
+
+// GET - Lista todos os usuários
+export async function GET() {
+  try {
+    const result = await pool.query(
+      "SELECT id, email, name, role, account_id, account_name FROM dash_users ORDER BY created_at"
+    );
+
+    const users = result.rows.map((row) => ({
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      role: row.role,
+      accountId: row.account_id,
+      accountName: row.account_name,
+    }));
+
+    return NextResponse.json({ users });
+  } catch (error) {
+    console.error("Erro ao listar usuários:", error);
+    return NextResponse.json(
+      { error: "Erro ao listar usuários." },
+      { status: 500 }
+    );
+  }
+}
+
+// POST - Cria novo usuário
+export async function POST(req: NextRequest) {
+  try {
+    const { email, name, password, role, accountId, accountName } = await req.json();
+
+    // Verifica se email já existe
+    const existing = await pool.query(
+      "SELECT id FROM dash_users WHERE LOWER(email) = LOWER($1)",
+      [email]
+    );
+
+    if (existing.rows.length > 0) {
+      return NextResponse.json(
+        { error: "E-mail já cadastrado." },
+        { status: 400 }
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(password || "mudar123", 10);
+
+    const result = await pool.query(
+      `INSERT INTO dash_users (email, name, password, role, account_id, account_name)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, email, name, role, account_id, account_name`,
+      [email, name, hashedPassword, role || "client", accountId || "", accountName || ""]
+    );
+
+    const row = result.rows[0];
+    return NextResponse.json({
+      user: {
+        id: row.id,
+        email: row.email,
+        name: row.name,
+        role: row.role,
+        accountId: row.account_id,
+        accountName: row.account_name,
+      },
+    });
+  } catch (error) {
+    console.error("Erro ao criar usuário:", error);
+    return NextResponse.json(
+      { error: "Erro ao criar usuário." },
+      { status: 500 }
+    );
+  }
+}
