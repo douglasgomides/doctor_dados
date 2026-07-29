@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
-import { useUsersStore } from "@/store/users-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,13 +16,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const login = useAuthStore((s) => s.login);
-  const users = useUsersStore((s) => s.users);
-  const fetchUsers = useUsersStore((s) => s.fetchUsers);
   const router = useRouter();
-
-  useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,29 +114,6 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
-
-            {/* Contas disponíveis */}
-            {users.length > 0 && (
-              <div className="mt-6 pt-4 border-t border-border/50">
-                <p className="text-xs text-muted-foreground mb-2 font-medium">
-                  Contas disponíveis:
-                </p>
-                <div className="space-y-1.5 text-xs text-muted-foreground">
-                  {users.map((u) => (
-                    <div key={u.id} className="flex items-center gap-2 bg-muted/50 rounded px-2 py-1.5">
-                      <span className={`font-mono px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                        u.role === "master"
-                          ? "bg-primary/10 text-primary"
-                          : "bg-chart-2/10 text-chart-2"
-                      }`}>
-                        {u.role === "master" ? "MASTER" : "CLIENT"}
-                      </span>
-                      <span>{u.email}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>

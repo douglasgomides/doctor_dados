@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
 
+// Autenticação e restrição a papel "master" são impostas pelo middleware
+// (src/middleware.ts) para todo o prefixo /api/users. Antes desta correção,
+// qualquer requisição não autenticada podia trocar a senha, o e-mail ou o
+// papel de qualquer usuário (inclusive o admin master), ou apagar contas.
+
+const VALID_ROLES = new Set(["master", "client"]);
+
 // PUT - Atualiza usuário
 export async function PUT(
   req: NextRequest,
@@ -10,6 +17,17 @@ export async function PUT(
   try {
     const { id } = await params;
     const data = await req.json();
+
+    if (data.role !== undefined && !VALID_ROLES.has(data.role)) {
+      return NextResponse.json({ error: "Papel (role) inválido." }, { status: 400 });
+    }
+
+    if (data.password !== undefined && data.password !== "" && data.password.length < 8) {
+      return NextResponse.json(
+        { error: "Senha deve ter ao menos 8 caracteres." },
+        { status: 400 }
+      );
+    }
 
     const fields: string[] = [];
     const values: unknown[] = [];

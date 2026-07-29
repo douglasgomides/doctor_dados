@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { CampaignRow, DashboardFilters } from "@/types";
-import { fetchSheetData } from "@/lib/google-sheets";
 
 interface DashboardState {
   data: CampaignRow[];
@@ -39,7 +38,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
     set({ isLoading: true, error: null });
     try {
-      const data = await fetchSheetData();
+      const res = await fetch("/api/campaigns");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Erro ao buscar dados (${res.status})`);
+      }
+      const { data } = await res.json();
       set({ data, isLoading: false, lastFetched: Date.now() });
     } catch (err) {
       set({

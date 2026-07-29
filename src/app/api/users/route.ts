@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
 
+// Autenticação e restrição a papel "master" são impostas pelo middleware
+// (src/middleware.ts) para todo o prefixo /api/users. Antes desta correção,
+// esta rota não exigia nenhuma sessão: qualquer requisição não autenticada
+// listava todos os e-mails cadastrados e podia criar um usuário com role
+// "master" arbitrariamente.
+
+const VALID_ROLES = new Set(["master", "client"]);
+
 // GET - Lista todos os usuários
 export async function GET() {
   try {
@@ -33,6 +41,24 @@ export async function POST(req: NextRequest) {
   try {
     const { email, name, password, role, accountId, accountName } = await req.json();
 
+    if (!email || !name) {
+      return NextResponse.json(
+        { error: "E-mail e nome são obrigatórios." },
+        { status: 400 }
+      );
+    }
+
+    if (!password || password.length < 8) {
+      return NextResponse.json(
+        { error: "Senha é obrigatória e deve ter ao menos 8 caracteres." },
+        { status: 400 }
+      );
+    }
+
+    if (role !== undefined && !VALID_ROLES.has(role)) {
+      return NextResponse.json({ error: "Papel (role) inválido." }, { status: 400 });
+    }
+
     // Verifica se email já existe
     const existing = await pool.query(
       "SELECT id FROM dash_users WHERE LOWER(email) = LOWER($1)",
@@ -46,7 +72,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const hashedPassword = await bcrypt.hash(password || "mudar123", 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await pool.query(
       `INSERT INTO dash_users (email, name, password, role, account_id, account_name)
