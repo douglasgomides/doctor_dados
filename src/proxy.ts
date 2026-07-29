@@ -1,0 +1,58 @@
+import { NextRequest, NextResponse } from "next/server";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
+
+// Rotas de página que exigem sessão válida (antes, a checagem só existia
+// no cliente, via um valor em localStorage que qualquer pessoa podia forjar).
+const PROTECTED_PAGE_PREFIX = "/dashboard";
+
+// Rotas de API restritas ao papel "master".
+const MASTER_ONLY_API_PREFIXES = ["/api/users"];
+
+// Rotas de API que exigem sessão válida, de qualquer papel.
+const AUTH_REQUIRED_API_PREFIXES = ["/api/campaigns"];
+
+export async function proxy(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  const session = await verifySessionToken(token);
+
+  const isProtectedPage = pathname.startsWith(PROTECTED_PAGE_PREFIX);
+  const isMasterOnlyApi = MASTER_ONLY_API_PREFIXES.some((p) => pathname.startsWith(p));
+  const isAuthRequiredApi = AUTH_REQUIRED_API_PREFIXES.some((p) => pathname.startsWith(p));
+
+  if (isProtectedPage && !session) {
+    const loginUrl = new URL("/login", req.url);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  if (isMasterOnlyApi) {
+    if (!session) {
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    }
+    if (session.role !== "master") {
+      return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
+    }
+  }
+
+  if (isAuthRequiredApi && !session) {
+    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  }
+
+  if (session) {
+    // Encaminha a identidade verificada para as rotas de API via headers
+    // internos. O cliente não consegue forjar isso: o middleware roda antes
+    // do handler e reconstrói o objeto de headers a partir daqui.
+    const forwardedHeaders = new Headers(req.headers);
+    forwardedHeaders.set("x-session-user-id", session.sub);
+    forwardedHeaders.set("x-session-role", session.role);
+    forwardedHeaders.set("x-session-account-id", session.accountId);
+    forwardedHeaders.set("x-session-account-name", session.accountName);
+    return NextResponse.next({ request: { headers: forwardedHeaders } });
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ["/dashboard/:path*", "/api/users/:path*", "/api/campaigns/:path*"],
+};

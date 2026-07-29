@@ -1,10 +1,49 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { createSessionToken, SESSION_COOKIE, SESSION_COOKIE_OPTIONS } from "@/lib/session";
+
+// Limite simples de tentativas por IP, em memória. Não substitui um limitador
+// distribuído de verdade, mas fecha o brute-force trivial que existia (a rota
+// aceitava tentativas ilimitadas de senha sem qualquer atraso ou bloqueio).
+const attemptsByIp = new Map<string, { count: number; resetAt: number }>();
+const MAX_ATTEMPTS = 10;
+const WINDOW_MS = 15 * 60 * 1000;
+
+function getClientIp(req: NextRequest): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  return forwarded?.split(",")[0]?.trim() || "unknown";
+}
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const entry = attemptsByIp.get(ip);
+  if (!entry || now > entry.resetAt) {
+    attemptsByIp.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > MAX_ATTEMPTS;
+}
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = getClientIp(req);
+    if (isRateLimited(ip)) {
+      return NextResponse.json(
+        { success: false, error: "Muitas tentativas. Tente novamente mais tarde." },
+        { status: 429 }
+      );
+    }
+
     const { email, password } = await req.json();
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { success: false, error: "E-mail e senha são obrigatórios." },
+        { status: 400 }
+      );
+    }
 
     const result = await pool.query(
       "SELECT * FROM dash_users WHERE LOWER(email) = LOWER($1)",
@@ -13,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     if (result.rows.length === 0) {
       return NextResponse.json(
-        { success: false, error: "E-mail não encontrado." },
+        { success: false, error: "E-mail ou senha inválidos." },
         { status: 401 }
       );
     }
@@ -23,24 +62,32 @@ export async function POST(req: NextRequest) {
 
     if (!validPassword) {
       return NextResponse.json(
-        { success: false, error: "Senha incorreta." },
+        { success: false, error: "E-mail ou senha inválidos." },
         { status: 401 }
       );
     }
 
-    // Retorna user sem a senha
-    const { password: _, ...safeUser } = user;
-    return NextResponse.json({
-      success: true,
-      user: {
-        id: safeUser.id,
-        email: safeUser.email,
-        name: safeUser.name,
-        role: safeUser.role,
-        accountId: safeUser.account_id,
-        accountName: safeUser.account_name,
-      },
+    const safeUser = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      accountId: user.account_id,
+      accountName: user.account_name,
+    };
+
+    const token = await createSessionToken({
+      sub: safeUser.id,
+      email: safeUser.email,
+      name: safeUser.name,
+      role: safeUser.role,
+      accountId: safeUser.accountId,
+      accountName: safeUser.accountName,
     });
+
+    const response = NextResponse.json({ success: true, user: safeUser });
+    response.cookies.set(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
+    return response;
   } catch (error) {
     console.error("Erro no login:", error);
     return NextResponse.json(

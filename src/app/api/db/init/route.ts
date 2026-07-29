@@ -1,9 +1,43 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
 
-export async function POST() {
+// Esta rota provisiona o banco e o usuário admin inicial. Antes, qualquer
+// pessoa na internet podia chamá-la sem autenticação, e a senha do admin
+// era o literal "admin123" embutido no código — ou seja, qualquer visitante
+// desconhecido conseguia (re)criar um acesso master com credencial conhecida.
+// Agora exige um segredo de setup (DB_INIT_SECRET) e uma senha definida via
+// variável de ambiente (ADMIN_DEFAULT_PASSWORD), sem fallback fraco.
+export async function POST(req: NextRequest) {
   try {
+    const initSecret = process.env.DB_INIT_SECRET;
+    if (!initSecret) {
+      return NextResponse.json(
+        { success: false, error: "DB_INIT_SECRET não configurado no servidor." },
+        { status: 500 }
+      );
+    }
+
+    const providedSecret = req.headers.get("x-init-secret");
+    if (!providedSecret || providedSecret !== initSecret) {
+      return NextResponse.json(
+        { success: false, error: "Não autorizado." },
+        { status: 401 }
+      );
+    }
+
+    const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD;
+    if (!adminPassword || adminPassword.length < 8) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "ADMIN_DEFAULT_PASSWORD não configurado (ou menor que 8 caracteres) no servidor.",
+        },
+        { status: 500 }
+      );
+    }
+
     // Cria tabela dash_users
     await pool.query(`
       CREATE TABLE IF NOT EXISTS dash_users (
@@ -26,7 +60,7 @@ export async function POST() {
     );
 
     if (existing.rows.length === 0) {
-      const hashedPassword = await bcrypt.hash("admin123", 10);
+      const hashedPassword = await bcrypt.hash(adminPassword, 10);
       await pool.query(
         `INSERT INTO dash_users (email, name, password, role, account_id, account_name)
          VALUES ($1, $2, $3, $4, $5, $6)`,

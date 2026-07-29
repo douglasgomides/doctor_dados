@@ -92,6 +92,7 @@ export default function UsersPage() {
 
   const handleSave = async () => {
     if (!form.name || !form.email) return;
+    if (!editingUser && form.password.length < 8) return;
 
     if (editingUser) {
       const data: Record<string, string> = {
@@ -107,7 +108,7 @@ export default function UsersPage() {
       await addUser({
         name: form.name,
         email: form.email,
-        password: form.password || "mudar123",
+        password: form.password,
         role: form.role,
         accountId: form.accountId,
         accountName: form.accountName,
@@ -244,7 +245,7 @@ export default function UsersPage() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">
-                Senha {editingUser && "(deixe vazio para manter a atual)"}
+                Senha {editingUser ? "(deixe vazio para manter a atual)" : "(mínimo 8 caracteres)"}
               </Label>
               <Input
                 type="password"
@@ -306,7 +307,12 @@ export default function UsersPage() {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={!form.name || !form.email || (form.role === "client" && !form.accountId)}
+              disabled={
+                !form.name ||
+                !form.email ||
+                (!editingUser && form.password.length < 8) ||
+                (form.role === "client" && !form.accountId)
+              }
             >
               {editingUser ? "Salvar" : "Adicionar"}
             </Button>
