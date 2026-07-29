@@ -12,6 +12,7 @@ interface DashboardState {
   setFilters: (filters: Partial<DashboardFilters>) => void;
   updateRow: (rowIndex: number, field: keyof CampaignRow, value: string | number) => void;
   getFilteredData: (accountFilter?: string) => CampaignRow[];
+  getPreviousPeriodData: (accountFilter?: string) => CampaignRow[];
 }
 
 export const useDashboardStore = create<DashboardState>((set, get) => ({
@@ -62,29 +63,67 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   getFilteredData: (accountFilter?: string) => {
     const { data, filters } = get();
-    return data.filter((row) => {
-      // Filtro de conta de anúncio (do seletor global ou da conta do cliente)
-      const effectiveAccount = accountFilter || filters.adAccount;
-      if (effectiveAccount && effectiveAccount !== "all") {
-        if (row.contaDeAnuncio !== effectiveAccount) return false;
-      }
+    return filterRows(data, filters, accountFilter);
+  },
 
-      // Filtro de data
-      if (filters.dateFrom) {
-        const rowDate = new Date(row.dia);
-        if (rowDate < filters.dateFrom) return false;
-      }
-      if (filters.dateTo) {
-        const rowDate = new Date(row.dia);
-        if (rowDate > filters.dateTo) return false;
-      }
+  // Dados do período imediatamente anterior, de mesma duração, para comparação
+  // real de tendência (% de variação) nos KPIs de inteligência comercial.
+  getPreviousPeriodData: (accountFilter?: string) => {
+    const { data, filters } = get();
 
-      // Filtro de campanha
-      if (filters.campaign && filters.campaign !== "all") {
-        if (row.nomeDaCampanha !== filters.campaign) return false;
-      }
+    let dateFrom = filters.dateFrom;
+    let dateTo = filters.dateTo;
 
-      return true;
-    });
+    if (!dateFrom || !dateTo) {
+      // Sem filtro de data explícito: usa os dias disponíveis nos dados
+      // (já filtrados por conta/campanha) e divide ao meio.
+      const scoped = filterRows(data, { ...filters, dateFrom: undefined, dateTo: undefined }, accountFilter);
+      const days = [...new Set(scoped.map((r) => r.dia))].sort();
+      if (days.length < 2) return [];
+      const mid = Math.floor(days.length / 2);
+      dateFrom = new Date(days[0]);
+      dateTo = new Date(days[mid - 1]);
+    }
+
+    const periodMs = dateTo.getTime() - dateFrom.getTime();
+    const prevDateTo = new Date(dateFrom.getTime() - 24 * 60 * 60 * 1000);
+    const prevDateFrom = new Date(prevDateTo.getTime() - periodMs);
+
+    return filterRows(
+      data,
+      { ...filters, dateFrom: prevDateFrom, dateTo: prevDateTo },
+      accountFilter
+    );
   },
 }));
+
+function filterRows(
+  data: CampaignRow[],
+  filters: DashboardFilters,
+  accountFilter?: string
+): CampaignRow[] {
+  return data.filter((row) => {
+    // Filtro de conta de anúncio (do seletor global ou da conta do cliente)
+    const effectiveAccount = accountFilter || filters.adAccount;
+    if (effectiveAccount && effectiveAccount !== "all") {
+      if (row.contaDeAnuncio !== effectiveAccount) return false;
+    }
+
+    // Filtro de data
+    if (filters.dateFrom) {
+      const rowDate = new Date(row.dia);
+      if (rowDate < filters.dateFrom) return false;
+    }
+    if (filters.dateTo) {
+      const rowDate = new Date(row.dia);
+      if (rowDate > filters.dateTo) return false;
+    }
+
+    // Filtro de campanha
+    if (filters.campaign && filters.campaign !== "all") {
+      if (row.nomeDaCampanha !== filters.campaign) return false;
+    }
+
+    return true;
+  });
+}
