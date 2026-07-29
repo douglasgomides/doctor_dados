@@ -6,12 +6,15 @@ import { useDashboardStore } from "@/store/dashboard-store";
 import { FiltersV2 } from "@/components/v2/filters-v2";
 import { KPICardsV2 } from "@/components/v2/kpi-cards-v2";
 import { ChartsV2 } from "@/components/v2/charts-v2";
+import { ConversionFunnelV2 } from "@/components/v2/conversion-funnel-v2";
+import { CampaignRankingV2 } from "@/components/v2/campaign-ranking-v2";
 import { DataTableV2 } from "@/components/v2/data-table-v2";
 import { Activity, Loader2 } from "lucide-react";
 
 export function DashboardV2() {
   const user = useAuthStore((s) => s.user);
   const getFilteredData = useDashboardStore((s) => s.getFilteredData);
+  const getPreviousPeriodData = useDashboardStore((s) => s.getPreviousPeriodData);
   const fetchData = useDashboardStore((s) => s.fetchData);
   const isLoading = useDashboardStore((s) => s.isLoading);
   const error = useDashboardStore((s) => s.error);
@@ -23,6 +26,7 @@ export function DashboardV2() {
   const isClient = user?.role === "client";
   const accountFilter = isClient ? user.accountName : undefined;
   const filteredData = getFilteredData(accountFilter);
+  const previousData = getPreviousPeriodData(accountFilter);
 
   if (isLoading && filteredData.length === 0) {
     return (
@@ -65,10 +69,16 @@ export function DashboardV2() {
       </div>
 
       {/* KPIs */}
-      <KPICardsV2 data={filteredData} />
+      <KPICardsV2 data={filteredData} previousData={previousData} />
+
+      {/* Funil de conversão */}
+      <ConversionFunnelV2 data={filteredData} />
 
       {/* Charts */}
       <ChartsV2 data={filteredData} />
+
+      {/* Ranking de campanhas */}
+      <CampaignRankingV2 data={filteredData} />
 
       {/* Table */}
       <div className="rounded-xl border border-border/40 bg-card/80 backdrop-blur-sm p-5">
