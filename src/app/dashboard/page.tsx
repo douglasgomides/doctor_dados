@@ -7,6 +7,8 @@ import { useDashboardStore } from "@/store/dashboard-store";
 import { DashboardFilters } from "@/components/dashboard/filters";
 import { KPICards } from "@/components/dashboard/kpi-cards";
 import { Charts } from "@/components/dashboard/charts";
+import { ConversionFunnel } from "@/components/dashboard/conversion-funnel";
+import { CampaignRanking } from "@/components/dashboard/campaign-ranking";
 import { DataTable } from "@/components/dashboard/data-table";
 import { DashboardV2 } from "@/components/v2/dashboard-v2";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +18,7 @@ export default function DashboardPage() {
   const version = useUIStore((s) => s.version);
   const user = useAuthStore((s) => s.user);
   const getFilteredData = useDashboardStore((s) => s.getFilteredData);
+  const getPreviousPeriodData = useDashboardStore((s) => s.getPreviousPeriodData);
   const fetchData = useDashboardStore((s) => s.fetchData);
   const isLoading = useDashboardStore((s) => s.isLoading);
   const error = useDashboardStore((s) => s.error);
@@ -32,6 +35,7 @@ export default function DashboardPage() {
   const isClient = user?.role === "client";
   const accountFilter = isClient ? user.accountName : undefined;
   const filteredData = getFilteredData(accountFilter);
+  const previousData = getPreviousPeriodData(accountFilter);
 
   if (isLoading && filteredData.length === 0) {
     return (
@@ -64,8 +68,10 @@ export default function DashboardPage() {
       </div>
 
       <DashboardFilters />
-      <KPICards data={filteredData} />
+      <KPICards data={filteredData} previousData={previousData} />
+      <ConversionFunnel data={filteredData} />
       <Charts data={filteredData} />
+      <CampaignRanking data={filteredData} />
 
       <Card className="border-border/50">
         <CardHeader className="pb-3">
