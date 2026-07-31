@@ -9,7 +9,7 @@ const PROTECTED_PAGE_PREFIX = "/dashboard";
 const MASTER_ONLY_API_PREFIXES = ["/api/users"];
 
 // Rotas de API que exigem sessão válida, de qualquer papel.
-const AUTH_REQUIRED_API_PREFIXES = ["/api/campaigns", "/api/roteiros"];
+const AUTH_REQUIRED_API_PREFIXES = ["/api/campaigns", "/api/roteiros", "/api/reunioes"];
 
 // No Next.js 16 o antigo "middleware.ts" foi renomeado para "proxy.ts"
 // (função exportada "proxy"). É este arquivo — src/proxy.ts — que o
@@ -64,5 +64,6 @@ export const config = {
     "/api/users/:path*",
     "/api/campaigns/:path*",
     "/api/roteiros/:path*",
+    "/api/reunioes/:path*",
   ],
 };

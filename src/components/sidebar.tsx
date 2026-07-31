@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Users,
   ClipboardCheck,
+  Users2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -30,6 +31,7 @@ const clientNavigation = [
 
 const teamNavigation = [
   { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },
+  { name: "Reuniões", href: "/dashboard/reunioes", icon: Users2 },
   { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
 
@@ -37,6 +39,7 @@ const masterNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Campanhas", href: "/dashboard/campaigns", icon: Table2 },
   { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },
+  { name: "Reuniões", href: "/dashboard/reunioes", icon: Users2 },
   { name: "Usuários", href: "/dashboard/users", icon: Users },
   { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];

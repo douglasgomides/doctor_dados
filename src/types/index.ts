@@ -145,3 +145,50 @@ export interface Roteiro {
   reviewedAt: string | null;
   createdAt: string;
 }
+
+// ============================================
+// VALIDADOR DE QUALIDADE DE REUNIÕES
+// ============================================
+
+export type ReuniaoTipo = "mentoria" | "grupo" | "onboarding" | "pontual";
+
+export const REUNIAO_TIPO_LABELS: Record<ReuniaoTipo, string> = {
+  mentoria: "Mentoria (mensal/quinzenal)",
+  grupo: "Reunião em grupo",
+  onboarding: "Onboarding",
+  pontual: "Pontual / Emergencial",
+};
+
+export type ReuniaoStatus = "aprovado" | "ajustar";
+
+export interface ReuniaoIssue {
+  severity: RoteiroIssueSeverity;
+  rule: string;
+  message: string;
+}
+
+export interface ReuniaoValidation {
+  status: ReuniaoStatus;
+  score: number;
+  issues: ReuniaoIssue[];
+  wordCount: number;
+  estimatedDurationMinutes: number;
+  suggestedAgenda: string[];
+}
+
+export interface Reuniao {
+  id: string;
+  authorId: string;
+  authorName: string;
+  clientName: string;
+  tipo: ReuniaoTipo;
+  content: string;
+  status: ReuniaoStatus;
+  score: number;
+  issues: ReuniaoIssue[];
+  suggestedAgenda: string[];
+  reviewNote: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}
