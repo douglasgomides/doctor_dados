@@ -75,6 +75,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Cria tabela roteiros (validador de qualidade de Reels/carrossel/Stories)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS roteiros (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        author_id UUID NOT NULL REFERENCES dash_users(id) ON DELETE CASCADE,
+        author_name VARCHAR(255) NOT NULL,
+        client_name VARCHAR(255) NOT NULL,
+        format VARCHAR(20) NOT NULL,
+        title VARCHAR(255) NOT NULL DEFAULT '',
+        content TEXT NOT NULL,
+        status VARCHAR(20) NOT NULL,
+        score INTEGER NOT NULL,
+        issues JSONB NOT NULL DEFAULT '[]',
+        review_note TEXT,
+        reviewed_by_name VARCHAR(255),
+        reviewed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     return NextResponse.json({ success: true, message: "Banco inicializado com sucesso." });
   } catch (error) {
     console.error("Erro ao inicializar banco:", error);

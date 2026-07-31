@@ -175,14 +175,20 @@ export default function UsersPage() {
                     <TableCell className="text-muted-foreground">{user.email}</TableCell>
                     <TableCell>
                       <Badge variant={user.role === "master" ? "default" : "secondary"}>
-                        {user.role === "master" ? "Master" : "Cliente"}
+                        {user.role === "master"
+                          ? "Master"
+                          : user.role === "team"
+                          ? "Equipe"
+                          : "Cliente"}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {user.role === "master" ? (
-                        <span className="text-muted-foreground text-sm">Todas</span>
-                      ) : (
+                      {user.role === "client" ? (
                         <span className="text-sm">{user.accountName}</span>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">
+                          {user.role === "master" ? "Todas" : "—"}
+                        </span>
                       )}
                     </TableCell>
                     <TableCell className="text-center">
@@ -276,6 +282,7 @@ export default function UsersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="master">Master (acesso total)</SelectItem>
+                  <SelectItem value="team">Equipe (valida roteiros)</SelectItem>
                   <SelectItem value="client">Cliente (somente leitura)</SelectItem>
                 </SelectContent>
               </Select>

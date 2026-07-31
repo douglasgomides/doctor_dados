@@ -11,6 +11,7 @@ import {
   Settings,
   LogOut,
   Users,
+  ClipboardCheck,
 } from "lucide-react";
 import {
   Tooltip,
@@ -19,16 +20,32 @@ import {
 } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import { UserRole } from "@/types";
 
-const baseNavigation = [
+const clientNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Campanhas", href: "/dashboard/campaigns", icon: Table2 },
   { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
 
-const adminNavigation = [
-  { name: "Usuários", href: "/dashboard/users", icon: Users },
+const teamNavigation = [
+  { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },
+  { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
+
+const masterNavigation = [
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Campanhas", href: "/dashboard/campaigns", icon: Table2 },
+  { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },
+  { name: "Usuários", href: "/dashboard/users", icon: Users },
+  { name: "Configurações", href: "/dashboard/settings", icon: Settings },
+];
+
+function getNavigation(role: UserRole) {
+  if (role === "master") return masterNavigation;
+  if (role === "team") return teamNavigation;
+  return clientNavigation;
+}
 
 export function SidebarV2() {
   const pathname = usePathname();
@@ -55,7 +72,7 @@ export function SidebarV2() {
 
       {/* Navigation */}
       <nav className="flex flex-col items-center gap-1 flex-1">
-        {[...baseNavigation, ...(user.role === "master" ? adminNavigation : [])].map((item) => {
+        {getNavigation(user.role).map((item) => {
           const isActive = pathname === item.href;
           return (
             <Tooltip key={item.name} delayDuration={0}>

@@ -1,0 +1,83 @@
+import { NextRequest, NextResponse } from "next/server";
+import pool from "@/lib/db";
+import { Roteiro, RoteiroStatus } from "@/types";
+
+// Autenticação é imposta pelo middleware (src/proxy.ts) para todo o
+// prefixo /api/roteiros. A revisão manual (override do status automático +
+// nota) é restrita ao papel "master" aqui, já que não há um prefixo dedicado
+// só para esta sub-rota no middleware.
+
+const VALID_STATUSES = new Set<RoteiroStatus>(["aprovado", "ajustar"]);
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapRow(row: any): Roteiro {
+  return {
+    id: row.id,
+    authorId: row.author_id,
+    authorName: row.author_name,
+    clientName: row.client_name,
+    format: row.format,
+    title: row.title,
+    content: row.content,
+    status: row.status,
+    score: row.score,
+    issues: row.issues,
+    reviewNote: row.review_note,
+    reviewedByName: row.reviewed_by_name,
+    reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const role = req.headers.get("x-session-role");
+    const reviewerName = req.headers.get("x-session-name");
+
+    if (role !== "master") {
+      return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
+    }
+
+    const { id } = await params;
+    const { status, reviewNote } = await req.json();
+
+    if (status !== undefined && !VALID_STATUSES.has(status)) {
+      return NextResponse.json({ error: "Status inválido." }, { status: 400 });
+    }
+
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    let paramIndex = 1;
+
+    if (status !== undefined) {
+      fields.push(`status = $${paramIndex++}`);
+      values.push(status);
+    }
+    if (reviewNote !== undefined) {
+      fields.push(`review_note = $${paramIndex++}`);
+      values.push(reviewNote);
+    }
+    fields.push(`reviewed_by_name = $${paramIndex++}`);
+    values.push(reviewerName);
+    fields.push(`reviewed_at = NOW()`);
+
+    values.push(id);
+
+    const result = await pool.query(
+      `UPDATE roteiros SET ${fields.join(", ")} WHERE id = $${paramIndex} RETURNING *`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: "Roteiro não encontrado." }, { status: 404 });
+    }
+
+    return NextResponse.json({ roteiro: mapRow(result.rows[0]) });
+  } catch (error) {
+    console.error("Erro ao revisar roteiro:", error);
+    return NextResponse.json({ error: "Erro ao revisar roteiro." }, { status: 500 });
+  }
+}

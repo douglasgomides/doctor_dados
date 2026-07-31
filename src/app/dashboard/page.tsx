@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useUIStore } from "@/store/ui-store";
 import { useAuthStore } from "@/store/auth-store";
 import { useDashboardStore } from "@/store/dashboard-store";
@@ -22,10 +23,19 @@ export default function DashboardPage() {
   const fetchData = useDashboardStore((s) => s.fetchData);
   const isLoading = useDashboardStore((s) => s.isLoading);
   const error = useDashboardStore((s) => s.error);
+  const router = useRouter();
 
   useEffect(() => {
+    if (user?.role === "team") {
+      router.replace("/dashboard/roteiros");
+      return;
+    }
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, user?.role, router]);
+
+  if (user?.role === "team") {
+    return null;
+  }
 
   if (version === "v2") {
     return <DashboardV2 />;

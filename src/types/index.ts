@@ -2,7 +2,7 @@
 // TYPES - Dashboard SaaS Multi-Tenant
 // ============================================
 
-export type UserRole = "master" | "client";
+export type UserRole = "master" | "client" | "team";
 
 export interface User {
   id: string;
@@ -97,4 +97,51 @@ export interface DashboardFilters {
   dateTo: Date | undefined;
   campaign: string;
   adAccount: string;
+}
+
+// ============================================
+// VALIDADOR DE QUALIDADE DE ROTEIROS
+// ============================================
+
+export type RoteiroFormat = "reel" | "carrossel" | "stories";
+
+export const ROTEIRO_FORMAT_LABELS: Record<RoteiroFormat, string> = {
+  reel: "Reels",
+  carrossel: "Carrossel",
+  stories: "Stories",
+};
+
+export type RoteiroStatus = "aprovado" | "ajustar";
+
+export type RoteiroIssueSeverity = "erro" | "alerta";
+
+export interface RoteiroIssue {
+  severity: RoteiroIssueSeverity;
+  rule: string;
+  message: string;
+}
+
+export interface RoteiroValidation {
+  status: RoteiroStatus;
+  score: number;
+  issues: RoteiroIssue[];
+  wordCount: number;
+  readingTimeSeconds: number | null;
+}
+
+export interface Roteiro {
+  id: string;
+  authorId: string;
+  authorName: string;
+  clientName: string;
+  format: RoteiroFormat;
+  title: string;
+  content: string;
+  status: RoteiroStatus;
+  score: number;
+  issues: RoteiroIssue[];
+  reviewNote: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
 }

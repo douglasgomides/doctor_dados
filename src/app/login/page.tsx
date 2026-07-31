@@ -25,7 +25,8 @@ export default function LoginPage() {
 
     const result = await login(email, password);
     if (result.success) {
-      router.push("/dashboard");
+      const role = useAuthStore.getState().user?.role;
+      router.push(role === "team" ? "/dashboard/roteiros" : "/dashboard");
     } else {
       setError(result.error || "Erro ao fazer login.");
     }

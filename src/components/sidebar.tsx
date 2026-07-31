@@ -13,22 +13,39 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  ClipboardCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
+import { UserRole } from "@/types";
 
-const baseNavigation = [
+const clientNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Campanhas", href: "/dashboard/campaigns", icon: Table2 },
   { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
 
-const adminNavigation = [
-  { name: "Usuários", href: "/dashboard/users", icon: Users },
+const teamNavigation = [
+  { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },
+  { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
+
+const masterNavigation = [
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Campanhas", href: "/dashboard/campaigns", icon: Table2 },
+  { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },
+  { name: "Usuários", href: "/dashboard/users", icon: Users },
+  { name: "Configurações", href: "/dashboard/settings", icon: Settings },
+];
+
+function getNavigation(role: UserRole) {
+  if (role === "master") return masterNavigation;
+  if (role === "team") return teamNavigation;
+  return clientNavigation;
+}
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -69,7 +86,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {[...baseNavigation, ...(user.role === "master" ? adminNavigation : [])].map((item) => {
+        {getNavigation(user.role).map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link
@@ -131,7 +148,7 @@ export function Sidebar() {
                   variant={user.role === "master" ? "default" : "secondary"}
                   className="text-[9px] px-1.5 py-0 h-4"
                 >
-                  {user.role === "master" ? "Master" : "Cliente"}
+                  {user.role === "master" ? "Master" : user.role === "team" ? "Equipe" : "Cliente"}
                 </Badge>
               </div>
             </div>

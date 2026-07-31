@@ -3,12 +3,12 @@ import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
 
 // Autenticação e restrição a papel "master" são impostas pelo middleware
-// (src/middleware.ts) para todo o prefixo /api/users. Antes desta correção,
+// (src/proxy.ts) para todo o prefixo /api/users. Antes desta correção,
 // esta rota não exigia nenhuma sessão: qualquer requisição não autenticada
 // listava todos os e-mails cadastrados e podia criar um usuário com role
 // "master" arbitrariamente.
 
-const VALID_ROLES = new Set(["master", "client"]);
+const VALID_ROLES = new Set(["master", "client", "team"]);
 
 // GET - Lista todos os usuários
 export async function GET() {

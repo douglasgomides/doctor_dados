@@ -9,8 +9,12 @@ const PROTECTED_PAGE_PREFIX = "/dashboard";
 const MASTER_ONLY_API_PREFIXES = ["/api/users"];
 
 // Rotas de API que exigem sessão válida, de qualquer papel.
-const AUTH_REQUIRED_API_PREFIXES = ["/api/campaigns"];
+const AUTH_REQUIRED_API_PREFIXES = ["/api/campaigns", "/api/roteiros"];
 
+// No Next.js 16 o antigo "middleware.ts" foi renomeado para "proxy.ts"
+// (função exportada "proxy"). É este arquivo — src/proxy.ts — que o
+// framework carrega; comentários em outras rotas que mencionam
+// "src/middleware.ts" estão se referindo a este mesmo arquivo.
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get(SESSION_COOKIE)?.value;
@@ -44,6 +48,7 @@ export async function proxy(req: NextRequest) {
     // do handler e reconstrói o objeto de headers a partir daqui.
     const forwardedHeaders = new Headers(req.headers);
     forwardedHeaders.set("x-session-user-id", session.sub);
+    forwardedHeaders.set("x-session-name", session.name);
     forwardedHeaders.set("x-session-role", session.role);
     forwardedHeaders.set("x-session-account-id", session.accountId);
     forwardedHeaders.set("x-session-account-name", session.accountName);
@@ -54,5 +59,10 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/api/users/:path*", "/api/campaigns/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/api/users/:path*",
+    "/api/campaigns/:path*",
+    "/api/roteiros/:path*",
+  ],
 };
