@@ -1,210 +1,85 @@
-import { RoteiroFormat, RoteiroIssue, RoteiroValidation } from "@/types";
-
-// Termos que violam a Resolução CFM 1.974/2011 (vedação a promessa de
-// resultado, sensacionalismo, superlativos e captação por comparação).
-// Detecção simples por palavra-chave — não substitui revisão humana, apenas
-// pega os casos mais óbvios antes de chegarem ao médico.
-const FORBIDDEN_TERMS = [
-  "cura garantida",
-  "resultado garantido",
-  "garantia de resultado",
-  "sem nenhum risco",
-  "sem risco nenhum",
-  "100% eficaz",
-  "100% seguro",
-  "nunca falha",
-  "infalível",
-  "melhor médico",
-  "melhor médica",
-  "o único que",
-  "a única que",
-  "número 1 em",
-  "cura definitiva",
-  "cura milagrosa",
-  "milagre",
-  "revolucionário",
-];
-
-const CTA_HINTS = [
-  "agend",
-  "clique",
-  "clica",
-  "chama",
-  "manda mensagem",
-  "chama no whats",
-  "link na bio",
-  "comenta",
-  "arrasta",
-  "compartilh",
-  "salva esse",
-  "marca um",
-];
+import Anthropic from "@anthropic-ai/sdk";
+import { RoteiroFormat, RoteiroValidation } from "@/types";
+import { callClaudeTool } from "./ai-client";
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function findForbiddenTerms(content: string): string[] {
-  const lower = content.toLowerCase();
-  return FORBIDDEN_TERMS.filter((term) => lower.includes(term));
+const FORMAT_LABELS: Record<RoteiroFormat, string> = {
+  reel: "Reels",
+  carrossel: "Carrossel",
+  stories: "Stories",
+};
+
+const SYSTEM_PROMPT = `Você é o revisor de qualidade de conteúdo da Doctor Creator, uma agência de marketing para médicos no Brasil. Avalie roteiros de Reels, Carrossel e Stories enviados pela equipe antes de irem para o médico/cliente aprovar, seguindo o "padrão ouro" de entrega da agência.
+
+Critérios obrigatórios para TODOS os formatos:
+- Compliance com a Resolução CFM nº 1.974/2011: proibido prometer resultado ou cura, usar superlativos ("o melhor", "o único", "número 1"), fazer comparação com outros profissionais, ou usar apelo sensacionalista/milagroso. Julgue o SENTIDO do texto, não apenas termos exatos — paráfrases e sinônimos da mesma promessa também violam a norma.
+- Estrutura clara adequada ao formato (ver abaixo).
+- Chamada para ação (CTA) explícita e clara ao final.
+- Linguagem natural, sem parecer propaganda enganosa.
+
+Critérios por formato:
+- Reels: precisa ter um GANCHO claro nos primeiros segundos (que prenda atenção), um CORPO que entrega valor/informação, e um CTA final. Tempo de leitura estimado ideal entre 15 e 90 segundos (aprox. 2,5 palavras/segundo).
+- Carrossel: precisa ter slides numerados e organizados (ideal 5 a 10 slides), com progressão lógica de ideia, e CTA claro no último slide.
+- Stories: precisa ter frames/quadros numerados (ideal 7 a 10 frames), sequência que mantém o espectador, e CTA claro.
+
+Retorne SEMPRE sua avaliação chamando a ferramenta fornecida, com:
+- status: "aprovado" se não houver nenhum problema classificado como "erro"; "ajustar" caso contrário.
+- score: nota de 0 a 100 (comece em 100 e desconte por gravidade: erro grave -25, alerta -10, sendo o mínimo 0).
+- issues: lista de problemas encontrados, cada um com severity ("erro" para bloqueadores/compliance, "alerta" para melhorias recomendadas), rule (um slug curto identificando o tipo de problema, ex: "compliance-cfm", "estrutura-reel-gancho", "estrutura-reel-cta") e message (explicação objetiva e acionável em português, dizendo o que corrigir).
+Se o roteiro estiver muito curto para avaliar (menos de ~15 palavras), retorne um único erro "conteudo-insuficiente" e score 0.`;
+
+const ISSUE_SCHEMA = {
+  type: "object",
+  properties: {
+    severity: { type: "string", enum: ["erro", "alerta"] },
+    rule: { type: "string" },
+    message: { type: "string" },
+  },
+  required: ["severity", "rule", "message"],
+};
+
+const ROTEIRO_SCHEMA: Anthropic.Tool.InputSchema = {
+  type: "object",
+  properties: {
+    status: { type: "string", enum: ["aprovado", "ajustar"] },
+    score: { type: "number", minimum: 0, maximum: 100 },
+    issues: { type: "array", items: ISSUE_SCHEMA },
+  },
+  required: ["status", "score", "issues"],
+};
+
+interface RoteiroAiResult {
+  status: RoteiroValidation["status"];
+  score: number;
+  issues: RoteiroValidation["issues"];
 }
 
-function hasCtaHint(content: string): boolean {
-  const lower = content.toLowerCase();
-  return CTA_HINTS.some((hint) => lower.includes(hint));
-}
-
-function countMarkers(content: string, pattern: RegExp): number {
-  const matches = content.match(pattern);
-  return matches ? new Set(matches.map((m) => m.toLowerCase())).size : 0;
-}
-
-function validateReel(content: string, issues: RoteiroIssue[]): number {
-  const hasGancho = /gancho\s*[:\-]/i.test(content);
-  const hasCorpo = /corpo\s*[:\-]/i.test(content);
-  const hasCta = /cta\s*[:\-]/i.test(content) || hasCtaHint(content);
-
-  if (!hasGancho) {
-    issues.push({
-      severity: "erro",
-      rule: "estrutura-reel-gancho",
-      message: "Não identificamos um GANCHO explícito nos 3 primeiros segundos. Marque a seção com \"Gancho:\".",
-    });
-  }
-  if (!hasCorpo) {
-    issues.push({
-      severity: "alerta",
-      rule: "estrutura-reel-corpo",
-      message: "Não identificamos a seção de CORPO marcada explicitamente. Marque com \"Corpo:\" para facilitar a revisão.",
-    });
-  }
-  if (!hasCta) {
-    issues.push({
-      severity: "erro",
-      rule: "estrutura-reel-cta",
-      message: "Não identificamos uma chamada para ação (CTA) no final do roteiro.",
-    });
-  }
-
+export async function validateRoteiro(
+  format: RoteiroFormat,
+  content: string
+): Promise<RoteiroValidation> {
   const wordCount = countWords(content);
-  const readingTimeSeconds = wordCount / 2.5;
+  const readingTimeSeconds = format === "reel" ? wordCount / 2.5 : null;
 
-  if (readingTimeSeconds > 95) {
-    issues.push({
-      severity: "alerta",
-      rule: "duracao-reel",
-      message: `Tempo de leitura estimado de ${Math.round(readingTimeSeconds)}s, acima do padrão de até 1min30 (90s). Considere cortar texto.`,
-    });
-  } else if (readingTimeSeconds < 12) {
-    issues.push({
-      severity: "alerta",
-      rule: "duracao-reel-curta",
-      message: `Tempo de leitura estimado de ${Math.round(readingTimeSeconds)}s, roteiro pode estar curto demais para entregar valor.`,
-    });
-  }
+  const result = await callClaudeTool<RoteiroAiResult>({
+    system: SYSTEM_PROMPT,
+    prompt: `Formato: ${FORMAT_LABELS[format]}\n\nRoteiro enviado pela equipe:\n"""\n${content}\n"""`,
+    toolName: "avaliar_roteiro",
+    toolDescription:
+      "Registra a avaliação de qualidade do roteiro segundo o padrão ouro da Doctor Creator.",
+    schema: ROTEIRO_SCHEMA,
+  });
 
-  return readingTimeSeconds;
-}
+  const score = Math.max(0, Math.min(100, Math.round(result.score)));
 
-function validateCarrossel(content: string, issues: RoteiroIssue[]) {
-  const slideCount = countMarkers(content, /slide\s*\d+/gi) || countMarkers(content, /^\s*\d+[.)]/gm);
-
-  if (slideCount === 0) {
-    issues.push({
-      severity: "erro",
-      rule: "estrutura-carrossel-slides",
-      message: "Não conseguimos identificar slides numerados (ex.: \"Slide 1\", \"Slide 2\"...). Numere os slides.",
-    });
-  } else if (slideCount < 4) {
-    issues.push({
-      severity: "alerta",
-      rule: "quantidade-slides-baixa",
-      message: `Apenas ${slideCount} slide(s) identificado(s). O padrão recomendado é de 5 a 10 slides.`,
-    });
-  } else if (slideCount > 12) {
-    issues.push({
-      severity: "alerta",
-      rule: "quantidade-slides-alta",
-      message: `${slideCount} slides identificados. Carrosséis muito longos tendem a perder retenção — considere reduzir.`,
-    });
-  }
-
-  if (!hasCtaHint(content)) {
-    issues.push({
-      severity: "erro",
-      rule: "estrutura-carrossel-cta",
-      message: "Não identificamos uma chamada para ação (CTA) clara no carrossel.",
-    });
-  }
-}
-
-function validateStories(content: string, issues: RoteiroIssue[]) {
-  const frameCount =
-    countMarkers(content, /frame\s*\d+/gi) || countMarkers(content, /quadro\s*\d+/gi);
-
-  if (frameCount === 0) {
-    issues.push({
-      severity: "erro",
-      rule: "estrutura-stories-frames",
-      message: "Não conseguimos identificar frames/quadros numerados (ex.: \"Frame 1\", \"Frame 2\"...). Numere os frames.",
-    });
-  } else if (frameCount < 5) {
-    issues.push({
-      severity: "alerta",
-      rule: "quantidade-frames-baixa",
-      message: `Apenas ${frameCount} frame(s) identificado(s). O padrão recomendado é de 7 a 10 frames.`,
-    });
-  } else if (frameCount > 12) {
-    issues.push({
-      severity: "alerta",
-      rule: "quantidade-frames-alta",
-      message: `${frameCount} frames identificados. Sequências muito longas tendem a perder o espectador antes do fim.`,
-    });
-  }
-
-  if (!hasCtaHint(content)) {
-    issues.push({
-      severity: "alerta",
-      rule: "estrutura-stories-cta",
-      message: "Não identificamos uma chamada para ação clara na sequência de Stories.",
-    });
-  }
-}
-
-export function validateRoteiro(format: RoteiroFormat, content: string): RoteiroValidation {
-  const issues: RoteiroIssue[] = [];
-  const wordCount = countWords(content);
-  let readingTimeSeconds: number | null = null;
-
-  if (wordCount < 15) {
-    issues.push({
-      severity: "erro",
-      rule: "conteudo-insuficiente",
-      message: "O roteiro está curto demais para avaliar a estrutura (menos de 15 palavras).",
-    });
-  } else {
-    if (format === "reel") {
-      readingTimeSeconds = validateReel(content, issues);
-    } else if (format === "carrossel") {
-      validateCarrossel(content, issues);
-    } else {
-      validateStories(content, issues);
-    }
-  }
-
-  const forbiddenFound = findForbiddenTerms(content);
-  for (const term of forbiddenFound) {
-    issues.push({
-      severity: "erro",
-      rule: "compliance-cfm",
-      message: `Termo "${term}" pode violar as normas do CFM (promessa de resultado, superlativo ou comparação). Reescreva esse trecho.`,
-    });
-  }
-
-  const errorCount = issues.filter((i) => i.severity === "erro").length;
-  const warningCount = issues.filter((i) => i.severity === "alerta").length;
-  const score = Math.max(0, 100 - errorCount * 25 - warningCount * 10);
-  const status: RoteiroValidation["status"] = errorCount > 0 ? "ajustar" : "aprovado";
-
-  return { status, score, issues, wordCount, readingTimeSeconds };
+  return {
+    status: result.status,
+    score,
+    issues: result.issues,
+    wordCount,
+    readingTimeSeconds,
+  };
 }

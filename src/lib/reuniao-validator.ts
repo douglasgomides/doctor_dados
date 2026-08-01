@@ -1,203 +1,116 @@
-import { ReuniaoIssue, ReuniaoTipo, ReuniaoValidation } from "@/types";
-
-// Heurísticas baseadas em palavras-chave sobre a transcrição do Meet. Não
-// substitui julgamento humano — pega os casos mais óbvios de reunião
-// incompleta antes de ficarem invisíveis no meio de dezenas de mentorias.
-
-const PROXIMA_REUNIAO_RE = /pr[oó]xima\s+reuni[aã]o/i;
-const DATA_HINT_RE =
-  /\d{1,2}\/\d{1,2}(\/\d{2,4})?|dia\s+\d{1,2}|(segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)([- ]feira)?|daqui\s+a\s+\d+\s*(dias?|semanas?)|(janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)/i;
-
-const ACAO_MEDICO_RE =
-  /\b(voc[eê]|dr\.?|dra\.?)\s+(vai|precisa|fica\s+de|vai\s+ficar\s+de|combinou\s+de)\b|fica(mos)?\s+combinad[oa]s?\s+(de|que)|sua\s+parte\b/i;
-
-const ENTREGA_CONSULTORIA_RE =
-  /\b(a\s+)?(equipe|consultoria|a\s+gente|n[oó]s)\s+(vai|vamos|fica(mos)?\s+de)\s+(mandar|enviar|entregar|preparar|montar|fazer)\b|\bvou\s+(te\s+)?(mandar|enviar|entregar)\b/i;
-
-const NUMERO_RE =
-  /\d+([.,]\d+)?\s*%|R\$\s?\d|\bseguidores?\b|\balcance\b|\bengajamento\b|\bcliques?\b|\bleads?\b|\bconsultas?\b|\bimpress(ões|oes)\b/gi;
-
-const ACAO_DECISAO_RE =
-  /\b(ent[aã]o|por\s+isso|vamos|precisamos|decidimos|ajustar|mudar|melhorar|estrat[ée]gia|a[cç][aã]o|pr[oó]ximo\s+passo|significa\s+que)\b/i;
-
-const SPEAKER_LINE_RE = /^([A-ZÀ-Ý][\wÀ-ÿ' ]{1,40}?):\s*(.+)$/gm;
+import Anthropic from "@anthropic-ai/sdk";
+import { ReuniaoTipo, ReuniaoValidation } from "@/types";
+import { callClaudeTool } from "./ai-client";
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function findSentence(content: string, matchIndex: number): string {
-  const start = content.lastIndexOf("\n", matchIndex) + 1;
-  let end = content.indexOf("\n", matchIndex);
-  if (end === -1) end = content.length;
-  return content.slice(start, end).trim().slice(0, 220);
+const TIPO_LABELS: Record<ReuniaoTipo, string> = {
+  mentoria: "Mentoria (mensal/quinzenal)",
+  grupo: "Reunião em grupo",
+  onboarding: "Onboarding",
+  pontual: "Pontual / Emergencial",
+};
+
+const DURATION_THRESHOLD_MINUTES = {
+  mentoriaOuGrupo: 25,
+  onboardingOuPontual: 8,
+};
+
+const SYSTEM_PROMPT = `Você é o revisor de qualidade de reuniões da Doctor Creator, uma agência de marketing para médicos no Brasil. Avalie transcrições de reuniões (gravadas e transcritas via Meet) entre a equipe/consultoria e o médico-cliente, seguindo o "padrão ouro" de entrega da agência.
+
+Requisitos OBRIGATÓRIOS (a ausência de qualquer um deles é um "erro"):
+1. Próxima reunião marcada com data ou dia claramente definido.
+2. Uma ação prática combinada para o MÉDICO cumprir até a próxima reunião.
+3. Uma entrega da CONSULTORIA/equipe combinada até a próxima reunião.
+
+Sinais de alerta a observar (cada um vira um "alerta" quando detectado):
+- Fala desequilibrada: um dos participantes (geralmente a consultoria) dominou a conversa (~75%+ do tempo/palavras), deixando pouco espaço para o médico falar.
+- Números e performance (seguidores, alcance, engajamento, cliques, leads, consultas, %, R$) foram citados mas NÃO foram conectados a nenhuma decisão prática ou mudança de estratégia para o negócio do médico — ou nenhum número/performance foi mencionado (não se aplica a reuniões de onboarding).
+- Duração da reunião parece curta demais para o tipo: mínimo esperado de ~${DURATION_THRESHOLD_MINUTES.mentoriaOuGrupo} min para mentoria/grupo e ~${DURATION_THRESHOLD_MINUTES.onboardingOuPontual} min para onboarding/pontual, estimando pela quantidade de conteúdo da transcrição.
+- Qualquer outro sinal relevante de reunião rasa, sem direção clara, ou sem meta objetiva.
+
+Além da avaliação, sintetize uma pauta sugerida (suggestedAgenda) para a PRÓXIMA reunião: itens objetivos a retomar/cobrar, com base nos compromissos assumidos e nos alertas identificados nesta reunião.
+
+Retorne SEMPRE sua avaliação chamando a ferramenta fornecida, com:
+- status: "aprovado" se não houver nenhum "erro" (requisito obrigatório ausente); "ajustar" caso contrário.
+- score: nota de 0 a 100 (comece em 100 e desconte: erro -25, alerta -10, mínimo 0).
+- issues: lista de problemas, cada um com severity ("erro" para requisito obrigatório ausente, "alerta" para sinal de risco), rule (slug curto, ex: "comprometimento-data", "comprometimento-medico", "comprometimento-consultoria", "fala-desequilibrada", "sem-cruzamento-negocio", "reuniao-curta") e message (explicação objetiva em português).
+- suggestedAgenda: lista de strings com os itens objetivos para a pauta da próxima reunião.`;
+
+const ISSUE_SCHEMA = {
+  type: "object",
+  properties: {
+    severity: { type: "string", enum: ["erro", "alerta"] },
+    rule: { type: "string" },
+    message: { type: "string" },
+  },
+  required: ["severity", "rule", "message"],
+};
+
+const REUNIAO_SCHEMA: Anthropic.Tool.InputSchema = {
+  type: "object",
+  properties: {
+    status: { type: "string", enum: ["aprovado", "ajustar"] },
+    score: { type: "number", minimum: 0, maximum: 100 },
+    issues: { type: "array", items: ISSUE_SCHEMA },
+    suggestedAgenda: { type: "array", items: { type: "string" } },
+  },
+  required: ["status", "score", "issues", "suggestedAgenda"],
+};
+
+interface ReuniaoAiResult {
+  status: ReuniaoValidation["status"];
+  score: number;
+  issues: ReuniaoValidation["issues"];
+  suggestedAgenda: string[];
 }
 
-function checkComprometimentos(content: string, issues: ReuniaoIssue[], agenda: string[]) {
-  const proximaMatch = PROXIMA_REUNIAO_RE.exec(content);
-  if (!proximaMatch) {
-    issues.push({
-      severity: "erro",
-      rule: "comprometimento-data",
-      message: "Não identificamos menção a uma próxima reunião marcada.",
-    });
-  } else {
-    const windowStart = Math.max(0, proximaMatch.index - 150);
-    const windowEnd = Math.min(content.length, proximaMatch.index + 150);
-    const window = content.slice(windowStart, windowEnd);
-    if (!DATA_HINT_RE.test(window)) {
-      issues.push({
-        severity: "erro",
-        rule: "comprometimento-data",
-        message: "A próxima reunião foi mencionada, mas sem data ou dia definido claramente por perto.",
-      });
-    } else {
-      agenda.push(`Confirmar: ${findSentence(content, proximaMatch.index)}`);
-    }
-  }
-
-  const acaoMatch = ACAO_MEDICO_RE.exec(content);
-  if (!acaoMatch) {
-    issues.push({
-      severity: "erro",
-      rule: "comprometimento-medico",
-      message: "Não identificamos uma ação combinada claramente para o médico até a próxima reunião.",
-    });
-  } else {
-    agenda.push(`Cobrar do médico: ${findSentence(content, acaoMatch.index)}`);
-  }
-
-  const entregaMatch = ENTREGA_CONSULTORIA_RE.exec(content);
-  if (!entregaMatch) {
-    issues.push({
-      severity: "erro",
-      rule: "comprometimento-consultoria",
-      message: "Não identificamos uma entrega da consultoria claramente combinada até a próxima reunião.",
-    });
-  } else {
-    agenda.push(`Entregar antes da próxima: ${findSentence(content, entregaMatch.index)}`);
-  }
-}
-
-function checkFalaDesequilibrada(content: string, issues: ReuniaoIssue[]) {
-  const wordsPerSpeaker = new Map<string, number>();
-  let match: RegExpExecArray | null;
-  SPEAKER_LINE_RE.lastIndex = 0;
-  while ((match = SPEAKER_LINE_RE.exec(content)) !== null) {
-    const speaker = match[1].trim().toLowerCase();
-    const words = countWords(match[2]);
-    wordsPerSpeaker.set(speaker, (wordsPerSpeaker.get(speaker) || 0) + words);
-  }
-
-  if (wordsPerSpeaker.size < 2) return;
-
-  const total = [...wordsPerSpeaker.values()].reduce((a, b) => a + b, 0);
-  if (total < 50) return;
-
-  const [topSpeaker, topWords] = [...wordsPerSpeaker.entries()].sort((a, b) => b[1] - a[1])[0];
-  const share = topWords / total;
-
-  if (share > 0.75) {
-    issues.push({
-      severity: "alerta",
-      rule: "fala-desequilibrada",
-      message: `"${topSpeaker}" concentrou ~${Math.round(share * 100)}% da conversa — favoreça mais espaço de fala para o médico.`,
-    });
-  }
-}
-
-function checkNumerosENegocio(content: string, issues: ReuniaoIssue[]) {
-  const matches = [...content.matchAll(NUMERO_RE)];
-  if (matches.length === 0) {
-    issues.push({
-      severity: "alerta",
-      rule: "sem-performance",
-      message: "Não identificamos nenhuma menção a número ou performance na reunião.",
-    });
-    return;
-  }
-
-  const hasCruzamento = matches.some((m) => {
-    const idx = m.index ?? 0;
-    const windowStart = Math.max(0, idx - 250);
-    const windowEnd = Math.min(content.length, idx + 250);
-    return ACAO_DECISAO_RE.test(content.slice(windowStart, windowEnd));
-  });
-
-  if (!hasCruzamento) {
-    issues.push({
-      severity: "alerta",
-      rule: "sem-cruzamento-negocio",
-      message: "Números foram citados, mas não parecem conectados a uma decisão ou mudança prática para o negócio do médico.",
-    });
-  }
-}
-
-function checkDuracao(
-  content: string,
+export async function validateReuniao(
   tipo: ReuniaoTipo,
-  issues: ReuniaoIssue[]
-): number {
+  content: string
+): Promise<ReuniaoValidation> {
   const wordCount = countWords(content);
-  const estimatedMinutes = wordCount / 140;
-  const threshold = tipo === "mentoria" ? 25 : 8;
-
-  if (estimatedMinutes < threshold) {
-    issues.push({
-      severity: "alerta",
-      rule: "reuniao-curta",
-      message: `Duração estimada de ~${Math.round(estimatedMinutes)} min pelo volume de texto, abaixo do esperado (${threshold} min) para esse tipo de reunião.`,
-    });
-  }
-
-  return estimatedMinutes;
-}
-
-export function validateReuniao(tipo: ReuniaoTipo, content: string): ReuniaoValidation {
-  const issues: ReuniaoIssue[] = [];
-  const agenda: string[] = [];
-  const wordCount = countWords(content);
+  const estimatedDurationMinutes = wordCount / 140;
 
   if (wordCount < 40) {
-    issues.push({
-      severity: "erro",
-      rule: "conteudo-insuficiente",
-      message: "A transcrição está curta demais para avaliar a reunião (menos de 40 palavras).",
-    });
     return {
       status: "ajustar",
       score: 0,
-      issues,
+      issues: [
+        {
+          severity: "erro",
+          rule: "conteudo-insuficiente",
+          message:
+            "A transcrição está curta demais para avaliar a reunião (menos de 40 palavras).",
+        },
+      ],
       wordCount,
-      estimatedDurationMinutes: 0,
+      estimatedDurationMinutes,
       suggestedAgenda: [],
     };
   }
 
-  checkComprometimentos(content, issues, agenda);
-  checkFalaDesequilibrada(content, issues);
-  const estimatedDurationMinutes = checkDuracao(content, tipo, issues);
-  if (tipo !== "onboarding") {
-    checkNumerosENegocio(content, issues);
-  }
+  const result = await callClaudeTool<ReuniaoAiResult>({
+    system: SYSTEM_PROMPT,
+    prompt: `Tipo de reunião: ${TIPO_LABELS[tipo]}\nDuração estimada pela quantidade de texto: ~${Math.round(
+      estimatedDurationMinutes
+    )} min\n\nTranscrição:\n"""\n${content}\n"""`,
+    toolName: "avaliar_reuniao",
+    toolDescription:
+      "Registra a avaliação de qualidade da reunião segundo o padrão ouro da Doctor Creator.",
+    schema: REUNIAO_SCHEMA,
+  });
 
-  for (const issue of issues) {
-    if (issue.severity === "alerta") {
-      agenda.push(`Retomar: ${issue.message}`);
-    }
-  }
-
-  const errorCount = issues.filter((i) => i.severity === "erro").length;
-  const warningCount = issues.filter((i) => i.severity === "alerta").length;
-  const score = Math.max(0, 100 - errorCount * 25 - warningCount * 10);
-  const status: ReuniaoValidation["status"] = errorCount > 0 ? "ajustar" : "aprovado";
+  const score = Math.max(0, Math.min(100, Math.round(result.score)));
 
   return {
-    status,
+    status: result.status,
     score,
-    issues,
+    issues: result.issues,
     wordCount,
     estimatedDurationMinutes,
-    suggestedAgenda: agenda,
+    suggestedAgenda: result.suggestedAgenda,
   };
 }

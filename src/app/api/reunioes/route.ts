@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "A transcrição não pode estar vazia." }, { status: 400 });
     }
 
-    const validation = validateReuniao(tipo, content);
+    const validation = await validateReuniao(tipo, content);
 
     const result = await pool.query(
       `INSERT INTO reunioes (author_id, author_name, client_name, tipo, content, status, score, issues, suggested_agenda)

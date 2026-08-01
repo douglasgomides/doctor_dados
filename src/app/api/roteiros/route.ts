@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "O roteiro não pode estar vazio." }, { status: 400 });
     }
 
-    const validation = validateRoteiro(format, content);
+    const validation = await validateRoteiro(format, content);
 
     const result = await pool.query(
       `INSERT INTO roteiros (author_id, author_name, client_name, format, title, content, status, score, issues)
