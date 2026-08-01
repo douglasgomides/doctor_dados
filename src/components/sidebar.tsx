@@ -15,6 +15,7 @@ import {
   Users,
   ClipboardCheck,
   Users2,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -22,6 +23,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { UserRole } from "@/types";
+
+const VISAO_GERAL_ITEMS = [{ name: "Visão Geral", href: "/dashboard/visao-geral", icon: Sparkles }];
 
 const PERFORMANCE_ITEMS = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -40,6 +43,7 @@ const GERAL_ITEMS = [{ name: "Configurações", href: "/dashboard/settings", ico
 function getNavigationGroups(role: UserRole) {
   if (role === "master") {
     return [
+      { label: "Visão Geral", items: VISAO_GERAL_ITEMS },
       { label: "Performance", items: PERFORMANCE_ITEMS },
       { label: "Qualidade", items: QUALIDADE_ITEMS },
       { label: "Admin", items: [...ADMIN_ITEMS, ...GERAL_ITEMS] },

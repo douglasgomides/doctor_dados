@@ -26,7 +26,13 @@ export default function LoginPage() {
     const result = await login(email, password);
     if (result.success) {
       const role = useAuthStore.getState().user?.role;
-      router.push(role === "team" ? "/dashboard/roteiros" : "/dashboard");
+      if (role === "team") {
+        router.push("/dashboard/roteiros");
+      } else if (role === "master") {
+        router.push("/dashboard/visao-geral");
+      } else {
+        router.push("/dashboard");
+      }
     } else {
       setError(result.error || "Erro ao fazer login.");
     }

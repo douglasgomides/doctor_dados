@@ -19,6 +19,7 @@ import { Bell, Search, Building2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 const PAGE_TITLES: Record<string, string> = {
+  "/dashboard/visao-geral": "Visão Geral",
   "/dashboard": "Dashboard",
   "/dashboard/campaigns": "Campanhas",
   "/dashboard/roteiros": "Roteiros",

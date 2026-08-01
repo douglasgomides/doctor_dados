@@ -115,6 +115,38 @@ export async function POST(req: NextRequest) {
       );
     `);
 
+    // Tabelas do pipeline externo de validação (n8n) que alimenta a Visão
+    // Geral. Normalmente já existem e são escritas por fora deste app — o
+    // CREATE TABLE IF NOT EXISTS aqui é só uma rede de segurança pra elas
+    // existirem mesmo se o pipeline ainda não tiver rodado.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS reuniao_validacoes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        arquivo_nome VARCHAR(255),
+        cliente VARCHAR(255) NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        resumo TEXT,
+        compromissos JSONB NOT NULL DEFAULT '[]',
+        riscos JSONB NOT NULL DEFAULT '[]',
+        pauta_proxima TEXT,
+        recap_mensagem TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS conteudo_validacoes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        peca_nome VARCHAR(255),
+        cliente VARCHAR(255) NOT NULL,
+        tipo VARCHAR(20) NOT NULL,
+        status_texto VARCHAR(50),
+        status_arte VARCHAR(50),
+        feedback TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     return NextResponse.json({ success: true, message: "Banco inicializado com sucesso." });
   } catch (error) {
     console.error("Erro ao inicializar banco:", error);
