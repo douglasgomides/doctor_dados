@@ -42,12 +42,7 @@ const GERAL_ITEMS = [{ name: "Configurações", href: "/dashboard/settings", ico
 
 function getNavigationGroups(role: UserRole) {
   if (role === "master") {
-    return [
-      VISAO_GERAL_ITEMS,
-      PERFORMANCE_ITEMS,
-      QUALIDADE_ITEMS,
-      [...ADMIN_ITEMS, ...GERAL_ITEMS],
-    ];
+    return [VISAO_GERAL_ITEMS, QUALIDADE_ITEMS, [...ADMIN_ITEMS, ...GERAL_ITEMS]];
   }
   if (role === "team") {
     return [QUALIDADE_ITEMS, GERAL_ITEMS];

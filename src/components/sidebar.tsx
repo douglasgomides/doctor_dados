@@ -44,7 +44,6 @@ function getNavigationGroups(role: UserRole) {
   if (role === "master") {
     return [
       { label: "Visão Geral", items: VISAO_GERAL_ITEMS },
-      { label: "Performance", items: PERFORMANCE_ITEMS },
       { label: "Qualidade", items: QUALIDADE_ITEMS },
       { label: "Admin", items: [...ADMIN_ITEMS, ...GERAL_ITEMS] },
     ];
