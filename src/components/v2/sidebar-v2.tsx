@@ -23,31 +23,28 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { UserRole } from "@/types";
 
-const clientNavigation = [
+const PERFORMANCE_ITEMS = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Campanhas", href: "/dashboard/campaigns", icon: Table2 },
-  { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
 
-const teamNavigation = [
+const QUALIDADE_ITEMS = [
   { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },
   { name: "Reuniões", href: "/dashboard/reunioes", icon: Users2 },
-  { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
 
-const masterNavigation = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Campanhas", href: "/dashboard/campaigns", icon: Table2 },
-  { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },
-  { name: "Reuniões", href: "/dashboard/reunioes", icon: Users2 },
-  { name: "Usuários", href: "/dashboard/users", icon: Users },
-  { name: "Configurações", href: "/dashboard/settings", icon: Settings },
-];
+const ADMIN_ITEMS = [{ name: "Usuários", href: "/dashboard/users", icon: Users }];
 
-function getNavigation(role: UserRole) {
-  if (role === "master") return masterNavigation;
-  if (role === "team") return teamNavigation;
-  return clientNavigation;
+const GERAL_ITEMS = [{ name: "Configurações", href: "/dashboard/settings", icon: Settings }];
+
+function getNavigationGroups(role: UserRole) {
+  if (role === "master") {
+    return [PERFORMANCE_ITEMS, QUALIDADE_ITEMS, [...ADMIN_ITEMS, ...GERAL_ITEMS]];
+  }
+  if (role === "team") {
+    return [QUALIDADE_ITEMS, GERAL_ITEMS];
+  }
+  return [PERFORMANCE_ITEMS, GERAL_ITEMS];
 }
 
 export function SidebarV2() {
@@ -75,32 +72,37 @@ export function SidebarV2() {
 
       {/* Navigation */}
       <nav className="flex flex-col items-center gap-1 flex-1">
-        {getNavigation(user.role).map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Tooltip key={item.name} delayDuration={0}>
-              <TooltipTrigger asChild>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "relative flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-200",
-                    isActive
-                      ? "bg-gradient-to-br from-violet-600/10 to-indigo-600/10 text-violet-600 dark:text-violet-400 shadow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                  )}
-                >
-                  {isActive && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[18px] w-1 h-5 rounded-r-full bg-gradient-to-b from-violet-600 to-indigo-600" />
-                  )}
-                  <item.icon className="h-[18px] w-[18px]" />
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="right" sideOffset={8}>
-                {item.name}
-              </TooltipContent>
-            </Tooltip>
-          );
-        })}
+        {getNavigationGroups(user.role).map((group, groupIndex) => (
+          <div key={groupIndex} className="flex flex-col items-center gap-1">
+            {groupIndex > 0 && <Separator className="w-8 my-1.5 opacity-50" />}
+            {group.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Tooltip key={item.name} delayDuration={0}>
+                  <TooltipTrigger asChild>
+                    <Link
+                      href={item.href}
+                      className={cn(
+                        "relative flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-200",
+                        isActive
+                          ? "bg-gradient-to-br from-violet-600/10 to-indigo-600/10 text-violet-600 dark:text-violet-400 shadow-sm"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                      )}
+                    >
+                      {isActive && (
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[18px] w-1 h-5 rounded-r-full bg-gradient-to-b from-violet-600 to-indigo-600" />
+                      )}
+                      <item.icon className="h-[18px] w-[18px]" />
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" sideOffset={8}>
+                    {item.name}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* User + Logout */}

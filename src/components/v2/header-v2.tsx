@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
 import { useDashboardStore } from "@/store/dashboard-store";
 import { MOCK_AD_ACCOUNTS } from "@/lib/mock-data";
@@ -17,8 +18,18 @@ import {
 import { Bell, Search, Building2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
+const PAGE_TITLES: Record<string, string> = {
+  "/dashboard": "Dashboard",
+  "/dashboard/campaigns": "Campanhas",
+  "/dashboard/roteiros": "Roteiros",
+  "/dashboard/reunioes": "Reuniões",
+  "/dashboard/users": "Usuários",
+  "/dashboard/settings": "Configurações",
+};
+
 export function HeaderV2() {
   const user = useAuthStore((s) => s.user);
+  const pathname = usePathname();
   const filters = useDashboardStore((s) => s.filters);
   const setFilters = useDashboardStore((s) => s.setFilters);
 
@@ -29,9 +40,11 @@ export function HeaderV2() {
       <div className="flex items-center gap-4">
         {/* Breadcrumb-style title */}
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold">DC Analytics</h2>
+          <h2 className="text-sm font-semibold">Doctor Creator Ops</h2>
           <span className="text-muted-foreground/40">/</span>
-          <span className="text-sm text-muted-foreground">Dashboard</span>
+          <span className="text-sm text-muted-foreground">
+            {PAGE_TITLES[pathname] || "Dashboard"}
+          </span>
         </div>
 
         {/* Account selector - Master only */}

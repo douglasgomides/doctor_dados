@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
 import { useDashboardStore } from "@/store/dashboard-store";
 import { MOCK_AD_ACCOUNTS } from "@/lib/mock-data";
@@ -15,8 +16,18 @@ import {
 } from "@/components/ui/select";
 import { Bell, Building2 } from "lucide-react";
 
+const PAGE_TITLES: Record<string, string> = {
+  "/dashboard": "Dashboard",
+  "/dashboard/campaigns": "Campanhas",
+  "/dashboard/roteiros": "Roteiros",
+  "/dashboard/reunioes": "Reuniões",
+  "/dashboard/users": "Usuários",
+  "/dashboard/settings": "Configurações",
+};
+
 export function Header() {
   const user = useAuthStore((s) => s.user);
+  const pathname = usePathname();
   const filters = useDashboardStore((s) => s.filters);
   const setFilters = useDashboardStore((s) => s.setFilters);
 
@@ -25,7 +36,7 @@ export function Header() {
   return (
     <header className="h-16 border-b border-border/50 bg-background/80 backdrop-blur-sm flex items-center justify-between px-6">
       <div className="flex items-center gap-4">
-        <h2 className="text-lg font-semibold">Dashboard</h2>
+        <h2 className="text-lg font-semibold">{PAGE_TITLES[pathname] || "Dashboard"}</h2>
 
         {/* Seletor de Conta de Anúncio - Apenas para Master */}
         {user.role === "master" && (

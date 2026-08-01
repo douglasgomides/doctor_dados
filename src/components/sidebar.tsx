@@ -23,31 +23,38 @@ import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { UserRole } from "@/types";
 
-const clientNavigation = [
+const PERFORMANCE_ITEMS = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Campanhas", href: "/dashboard/campaigns", icon: Table2 },
-  { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
 
-const teamNavigation = [
+const QUALIDADE_ITEMS = [
   { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },
   { name: "Reuniões", href: "/dashboard/reunioes", icon: Users2 },
-  { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
 
-const masterNavigation = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Campanhas", href: "/dashboard/campaigns", icon: Table2 },
-  { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },
-  { name: "Reuniões", href: "/dashboard/reunioes", icon: Users2 },
-  { name: "Usuários", href: "/dashboard/users", icon: Users },
-  { name: "Configurações", href: "/dashboard/settings", icon: Settings },
-];
+const ADMIN_ITEMS = [{ name: "Usuários", href: "/dashboard/users", icon: Users }];
 
-function getNavigation(role: UserRole) {
-  if (role === "master") return masterNavigation;
-  if (role === "team") return teamNavigation;
-  return clientNavigation;
+const GERAL_ITEMS = [{ name: "Configurações", href: "/dashboard/settings", icon: Settings }];
+
+function getNavigationGroups(role: UserRole) {
+  if (role === "master") {
+    return [
+      { label: "Performance", items: PERFORMANCE_ITEMS },
+      { label: "Qualidade", items: QUALIDADE_ITEMS },
+      { label: "Admin", items: [...ADMIN_ITEMS, ...GERAL_ITEMS] },
+    ];
+  }
+  if (role === "team") {
+    return [
+      { label: "Qualidade", items: QUALIDADE_ITEMS },
+      { label: "Geral", items: GERAL_ITEMS },
+    ];
+  }
+  return [
+    { label: "Performance", items: PERFORMANCE_ITEMS },
+    { label: "Geral", items: GERAL_ITEMS },
+  ];
 }
 
 export function Sidebar() {
@@ -79,34 +86,43 @@ export function Sidebar() {
         </div>
         {!collapsed && (
           <div className="flex flex-col min-w-0">
-            <span className="font-semibold text-sm truncate">DC Analytics</span>
+            <span className="font-semibold text-sm truncate">Doctor Creator Ops</span>
             <span className="text-[10px] text-muted-foreground truncate">
-              Meta Ads Dashboard
+              Central da agência
             </span>
           </div>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {getNavigation(user.role).map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
-              )}
-            >
-              <item.icon className="h-4.5 w-4.5 shrink-0" />
-              {!collapsed && <span>{item.name}</span>}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
+        {getNavigationGroups(user.role).map((group) => (
+          <div key={group.label} className="space-y-1">
+            {!collapsed && (
+              <span className="block px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                {group.label}
+              </span>
+            )}
+            {group.items.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+                  )}
+                >
+                  <item.icon className="h-4.5 w-4.5 shrink-0" />
+                  {!collapsed && <span>{item.name}</span>}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* Collapse toggle */}

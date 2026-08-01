@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DC Analytics - Dashboard de Meta Ads",
+  title: "Doctor Creator Ops",
   description:
-    "Plataforma de análise de distribuição de conteúdo e métricas de Meta Ads",
+    "Central de operação da agência: performance de anúncios, qualidade de conteúdo e de reuniões",
 };
 
 export default function RootLayout({

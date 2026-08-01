@@ -41,9 +41,9 @@ export default function LoginPage() {
           <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-primary text-primary-foreground">
             <BarChart3 className="h-7 w-7" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">DC Analytics</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Doctor Creator Ops</h1>
           <p className="text-sm text-muted-foreground">
-            Dashboard de Distribuição de Conteúdo & Meta Ads
+            Performance, roteiros e reuniões em um só lugar
           </p>
         </div>
 
