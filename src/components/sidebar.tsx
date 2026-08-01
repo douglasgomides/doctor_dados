@@ -6,8 +6,6 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import {
   BarChart3,
-  LayoutDashboard,
-  Table2,
   Settings,
   LogOut,
   ChevronLeft,
@@ -26,11 +24,6 @@ import { UserRole } from "@/types";
 
 const VISAO_GERAL_ITEMS = [{ name: "Visão Geral", href: "/dashboard/visao-geral", icon: Sparkles }];
 
-const PERFORMANCE_ITEMS = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Campanhas", href: "/dashboard/campaigns", icon: Table2 },
-];
-
 const QUALIDADE_ITEMS = [
   { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },
   { name: "Reuniões", href: "/dashboard/reunioes", icon: Users2 },
@@ -48,14 +41,8 @@ function getNavigationGroups(role: UserRole) {
       { label: "Admin", items: [...ADMIN_ITEMS, ...GERAL_ITEMS] },
     ];
   }
-  if (role === "team") {
-    return [
-      { label: "Qualidade", items: QUALIDADE_ITEMS },
-      { label: "Geral", items: GERAL_ITEMS },
-    ];
-  }
   return [
-    { label: "Performance", items: PERFORMANCE_ITEMS },
+    { label: "Qualidade", items: QUALIDADE_ITEMS },
     { label: "Geral", items: GERAL_ITEMS },
   ];
 }
@@ -170,7 +157,7 @@ export function Sidebar() {
                   variant={user.role === "master" ? "default" : "secondary"}
                   className="text-[9px] px-1.5 py-0 h-4"
                 >
-                  {user.role === "master" ? "Master" : user.role === "team" ? "Equipe" : "Cliente"}
+                  {user.role === "master" ? "Master" : "Equipe"}
                 </Badge>
               </div>
             </div>

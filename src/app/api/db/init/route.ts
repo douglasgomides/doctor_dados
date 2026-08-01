@@ -62,16 +62,9 @@ export async function POST(req: NextRequest) {
     if (existing.rows.length === 0) {
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
       await pool.query(
-        `INSERT INTO dash_users (email, name, password, role, account_id, account_name)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          "admin@dashboard.com",
-          "Admin Master",
-          hashedPassword,
-          "master",
-          "all",
-          "Todas as Contas",
-        ]
+        `INSERT INTO dash_users (email, name, password, role)
+         VALUES ($1, $2, $3, $4)`,
+        ["admin@dashboard.com", "Admin Master", hashedPassword, "master"]
       );
     }
 

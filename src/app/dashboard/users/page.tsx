@@ -33,7 +33,6 @@ import {
 } from "@/components/ui/table";
 import { Users, Plus, Pencil, Trash2, Shield, UserIcon } from "lucide-react";
 import { User, UserRole } from "@/types";
-import { MOCK_AD_ACCOUNTS } from "@/lib/mock-data";
 
 export default function UsersPage() {
   const currentUser = useAuthStore((s) => s.user);
@@ -45,9 +44,7 @@ export default function UsersPage() {
     name: "",
     email: "",
     password: "",
-    role: "client" as UserRole,
-    accountId: "",
-    accountName: "",
+    role: "team" as UserRole,
   });
 
   useEffect(() => {
@@ -55,39 +52,19 @@ export default function UsersPage() {
   }, [fetchUsers]);
 
   if (currentUser?.role !== "master") {
-    redirect("/dashboard");
+    redirect("/dashboard/visao-geral");
   }
 
   const openAdd = () => {
     setEditingUser(null);
-    setForm({ name: "", email: "", password: "", role: "client", accountId: "", accountName: "" });
+    setForm({ name: "", email: "", password: "", role: "team" });
     setShowDialog(true);
   };
 
   const openEdit = (user: User) => {
     setEditingUser(user);
-    setForm({
-      name: user.name,
-      email: user.email,
-      password: "",
-      role: user.role,
-      accountId: user.accountId,
-      accountName: user.accountName,
-    });
+    setForm({ name: user.name, email: user.email, password: "", role: user.role });
     setShowDialog(true);
-  };
-
-  const handleAccountChange = (accountId: string) => {
-    if (accountId === "all") {
-      setForm({ ...form, accountId: "all", accountName: "Todas as Contas" });
-    } else {
-      const account = MOCK_AD_ACCOUNTS.find((a) => a.id === accountId);
-      setForm({
-        ...form,
-        accountId,
-        accountName: account?.name || "",
-      });
-    }
   };
 
   const handleSave = async () => {
@@ -99,8 +76,6 @@ export default function UsersPage() {
         name: form.name,
         email: form.email,
         role: form.role,
-        accountId: form.accountId,
-        accountName: form.accountName,
       };
       if (form.password) data.password = form.password;
       await updateUser(editingUser.id, data);
@@ -110,8 +85,6 @@ export default function UsersPage() {
         email: form.email,
         password: form.password,
         role: form.role,
-        accountId: form.accountId,
-        accountName: form.accountName,
       });
     }
     setShowDialog(false);
@@ -155,7 +128,6 @@ export default function UsersPage() {
                   <TableHead>Nome</TableHead>
                   <TableHead>E-mail</TableHead>
                   <TableHead>Nível</TableHead>
-                  <TableHead>Conta de Anúncio</TableHead>
                   <TableHead className="w-[100px] text-center">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -175,21 +147,8 @@ export default function UsersPage() {
                     <TableCell className="text-muted-foreground">{user.email}</TableCell>
                     <TableCell>
                       <Badge variant={user.role === "master" ? "default" : "secondary"}>
-                        {user.role === "master"
-                          ? "Master"
-                          : user.role === "team"
-                          ? "Equipe"
-                          : "Cliente"}
+                        {user.role === "master" ? "Master" : "Equipe"}
                       </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {user.role === "client" ? (
-                        <span className="text-sm">{user.accountName}</span>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">
-                          {user.role === "master" ? "Todas" : "—"}
-                        </span>
-                      )}
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -265,48 +224,17 @@ export default function UsersPage() {
               <Label className="text-xs">Nível de Acesso</Label>
               <Select
                 value={form.role}
-                onValueChange={(v: UserRole) => {
-                  setForm({ ...form, role: v });
-                  if (v === "master") {
-                    setForm((prev) => ({
-                      ...prev,
-                      role: v,
-                      accountId: "all",
-                      accountName: "Todas as Contas",
-                    }));
-                  }
-                }}
+                onValueChange={(v: UserRole) => setForm({ ...form, role: v })}
               >
                 <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="master">Master (acesso total)</SelectItem>
-                  <SelectItem value="team">Equipe (valida roteiros)</SelectItem>
-                  <SelectItem value="client">Cliente (somente leitura)</SelectItem>
+                  <SelectItem value="team">Equipe (valida roteiros/reuniões)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            {form.role === "client" && (
-              <div className="space-y-1.5">
-                <Label className="text-xs">Conta de Anúncio</Label>
-                <Select
-                  value={form.accountId}
-                  onValueChange={handleAccountChange}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Selecione a conta" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MOCK_AD_ACCOUNTS.map((acc) => (
-                      <SelectItem key={acc.id} value={acc.id}>
-                        {acc.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>
@@ -315,10 +243,7 @@ export default function UsersPage() {
             <Button
               onClick={handleSave}
               disabled={
-                !form.name ||
-                !form.email ||
-                (!editingUser && form.password.length < 8) ||
-                (form.role === "client" && !form.accountId)
+                !form.name || !form.email || (!editingUser && form.password.length < 8)
               }
             >
               {editingUser ? "Salvar" : "Adicionar"}

@@ -3,18 +3,15 @@ import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
 
 // Autenticação e restrição a papel "master" são impostas pelo middleware
-// (src/proxy.ts) para todo o prefixo /api/users. Antes desta correção,
-// esta rota não exigia nenhuma sessão: qualquer requisição não autenticada
-// listava todos os e-mails cadastrados e podia criar um usuário com role
-// "master" arbitrariamente.
+// (src/proxy.ts) para todo o prefixo /api/users.
 
-const VALID_ROLES = new Set(["master", "client", "team"]);
+const VALID_ROLES = new Set(["master", "team"]);
 
 // GET - Lista todos os usuários
 export async function GET() {
   try {
     const result = await pool.query(
-      "SELECT id, email, name, role, account_id, account_name FROM dash_users ORDER BY created_at"
+      "SELECT id, email, name, role FROM dash_users ORDER BY created_at"
     );
 
     const users = result.rows.map((row) => ({
@@ -22,8 +19,6 @@ export async function GET() {
       email: row.email,
       name: row.name,
       role: row.role,
-      accountId: row.account_id,
-      accountName: row.account_name,
     }));
 
     return NextResponse.json({ users });
@@ -39,7 +34,7 @@ export async function GET() {
 // POST - Cria novo usuário
 export async function POST(req: NextRequest) {
   try {
-    const { email, name, password, role, accountId, accountName } = await req.json();
+    const { email, name, password, role } = await req.json();
 
     if (!email || !name) {
       return NextResponse.json(
@@ -75,10 +70,10 @@ export async function POST(req: NextRequest) {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await pool.query(
-      `INSERT INTO dash_users (email, name, password, role, account_id, account_name)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, email, name, role, account_id, account_name`,
-      [email, name, hashedPassword, role || "client", accountId || "", accountName || ""]
+      `INSERT INTO dash_users (email, name, password, role)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, email, name, role`,
+      [email, name, hashedPassword, role || "team"]
     );
 
     const row = result.rows[0];
@@ -88,8 +83,6 @@ export async function POST(req: NextRequest) {
         email: row.email,
         name: row.name,
         role: row.role,
-        accountId: row.account_id,
-        accountName: row.account_name,
       },
     });
   } catch (error) {

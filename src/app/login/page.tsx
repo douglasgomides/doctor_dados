@@ -26,13 +26,7 @@ export default function LoginPage() {
     const result = await login(email, password);
     if (result.success) {
       const role = useAuthStore.getState().user?.role;
-      if (role === "team") {
-        router.push("/dashboard/roteiros");
-      } else if (role === "master") {
-        router.push("/dashboard/visao-geral");
-      } else {
-        router.push("/dashboard");
-      }
+      router.push(role === "team" ? "/dashboard/roteiros" : "/dashboard/visao-geral");
     } else {
       setError(result.error || "Erro ao fazer login.");
     }
@@ -139,7 +133,7 @@ export default function LoginPage() {
         </Card>
 
         <p className="text-center text-xs text-white/30">
-          Doctor Creator — acesso restrito à equipe e clientes
+          Doctor Creator — acesso restrito à equipe interna
         </p>
       </div>
     </div>
