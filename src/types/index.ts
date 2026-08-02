@@ -116,6 +116,51 @@ export interface Reuniao {
 }
 
 // ============================================
+// ANÁLISE COMERCIAL — feedback de qualidade de calls de vendas,
+// extraído automaticamente da transcrição do Meet
+// ============================================
+
+export type ComercialStatus = "aprovado" | "ajustar";
+
+export interface ComercialIssue {
+  severity: RoteiroIssueSeverity;
+  rule: string;
+  message: string;
+}
+
+export interface ComercialAnalise {
+  id: string;
+  titulo: string;
+  participantes: string[];
+  content: string;
+  status: ComercialStatus;
+  score: number;
+  issues: ComercialIssue[];
+  pontosFortes: string[];
+  pontosMelhoria: string[];
+  createdAt: string;
+}
+
+// ============================================
+// TAREFAS DE DAILY — itens de acompanhamento extraídos
+// automaticamente das dailies internas
+// ============================================
+
+export interface DailyTarefaItem {
+  responsavel: string;
+  tarefa: string;
+  prazo: string | null;
+}
+
+export interface DailyTarefas {
+  id: string;
+  titulo: string;
+  participantes: string[];
+  itens: DailyTarefaItem[];
+  createdAt: string;
+}
+
+// ============================================
 // CLIENTES — cadastro dos médicos atendidos, com responsável da
 // equipe e metas de cadência (base para automatizar cobrança/follow-up)
 // ============================================

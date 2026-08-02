@@ -16,6 +16,7 @@ import {
   Contact,
   TrendingUp,
   Wand2,
+  Briefcase,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -27,6 +28,7 @@ import { UserRole } from "@/types";
 const VISAO_GERAL_ITEMS = [
   { name: "Visão Geral", href: "/dashboard/visao-geral", icon: Sparkles },
   { name: "Performance", href: "/dashboard/performance", icon: TrendingUp },
+  { name: "Comercial", href: "/dashboard/comercial", icon: Briefcase },
 ];
 
 const QUALIDADE_ITEMS = [

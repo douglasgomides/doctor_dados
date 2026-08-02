@@ -1,0 +1,213 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useAuthStore } from "@/store/auth-store";
+import { useComercialStore } from "@/store/comercial-store";
+import { redirect } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Briefcase,
+  FileText,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  ThumbsUp,
+  Lightbulb,
+} from "lucide-react";
+import { ComercialAnalise } from "@/types";
+
+export default function ComercialPage() {
+  const currentUser = useAuthStore((s) => s.user);
+  const { analises, fetchAnalises } = useComercialStore();
+  const [selected, setSelected] = useState<ComercialAnalise | null>(null);
+
+  useEffect(() => {
+    fetchAnalises();
+  }, [fetchAnalises]);
+
+  if (currentUser?.role !== "master") {
+    redirect("/dashboard/visao-geral");
+  }
+
+  return (
+    <div className="space-y-6 max-w-5xl mx-auto">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight font-heading">Comercial</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Análise automática de calls comerciais, importadas da transcrição do Meet
+        </p>
+      </div>
+
+      <Card className="border-border/50">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Briefcase className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-base">Calls analisadas</CardTitle>
+          </div>
+          <CardDescription>
+            {analises.length} call{analises.length !== 1 ? "s" : ""} importada
+            {analises.length !== 1 ? "s" : ""} automaticamente
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border border-border/50 overflow-hidden overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/30 hover:bg-muted/30">
+                  <TableHead>Data</TableHead>
+                  <TableHead>Título</TableHead>
+                  <TableHead>Participantes</TableHead>
+                  <TableHead>Nota</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-[80px] text-center">Ver</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {analises.map((a) => (
+                  <TableRow key={a.id} className="cursor-pointer" onClick={() => setSelected(a)}>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {new Date(a.createdAt).toLocaleDateString("pt-BR")}
+                    </TableCell>
+                    <TableCell className="font-medium max-w-[220px] truncate">
+                      {a.titulo || "Sem título"}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-[220px] truncate">
+                      {a.participantes.join(", ")}
+                    </TableCell>
+                    <TableCell className="text-sm">{a.score}/100</TableCell>
+                    <TableCell>
+                      <StatusBadge status={a.status} />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <FileText className="h-3.5 w-3.5 mx-auto text-muted-foreground" />
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {analises.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      Nenhuma call comercial analisada ainda.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          {selected && <ComercialDetalhe analise={selected} />}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: ComercialAnalise["status"] }) {
+  return status === "aprovado" ? (
+    <Badge className="!bg-emerald-600 !text-white">Aprovado</Badge>
+  ) : (
+    <Badge variant="destructive">Precisa de ajuste</Badge>
+  );
+}
+
+function ComercialDetalhe({ analise }: { analise: ComercialAnalise }) {
+  const errors = analise.issues.filter((i) => i.severity === "erro");
+  const warnings = analise.issues.filter((i) => i.severity === "alerta");
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="font-heading flex items-center gap-2">
+          {analise.titulo || "Call comercial"}
+          {analise.status === "aprovado" ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          ) : (
+            <XCircle className="h-4 w-4 text-destructive" />
+          )}
+        </DialogTitle>
+        <DialogDescription>
+          {analise.participantes.join(", ")} ·{" "}
+          {new Date(analise.createdAt).toLocaleString("pt-BR")}
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-4 text-sm">
+        <Badge variant="outline">Nota: {analise.score}/100</Badge>
+
+        {analise.issues.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum problema identificado.</p>
+        ) : (
+          <ul className="space-y-2">
+            {[...errors, ...warnings].map((issue, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm">
+                {issue.severity === "erro" ? (
+                  <XCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                )}
+                <span>{issue.message}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {analise.pontosFortes.length > 0 && (
+          <div className="rounded-lg border border-border p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <ThumbsUp className="h-4 w-4 text-emerald-500" />
+              <span className="font-medium text-sm">Pontos fortes</span>
+            </div>
+            <ul className="space-y-1.5">
+              {analise.pontosFortes.map((item, i) => (
+                <li key={i} className="text-sm text-muted-foreground">
+                  • {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {analise.pontosMelhoria.length > 0 && (
+          <div className="rounded-lg border border-border p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <Lightbulb className="h-4 w-4 text-amber-500" />
+              <span className="font-medium text-sm">Pontos de melhoria</span>
+            </div>
+            <ul className="space-y-1.5">
+              {analise.pontosMelhoria.map((item, i) => (
+                <li key={i} className="text-sm text-muted-foreground">
+                  • {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Transcrição</p>
+          <div className="rounded-md border border-border bg-muted/20 p-3 text-sm whitespace-pre-wrap max-h-60 overflow-y-auto">
+            {analise.content}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

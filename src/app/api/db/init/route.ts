@@ -150,6 +150,36 @@ export async function POST(req: NextRequest) {
       ADD COLUMN IF NOT EXISTS suggested_content_ideas JSONB NOT NULL DEFAULT '[]';
     `);
 
+    // Análise de qualidade de calls comerciais, importadas automaticamente
+    // da transcrição do Meet (ver /api/automations/comercial).
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS comercial_analises (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        titulo VARCHAR(500) NOT NULL DEFAULT '',
+        participantes JSONB NOT NULL DEFAULT '[]',
+        content TEXT NOT NULL,
+        status VARCHAR(20) NOT NULL,
+        score INTEGER NOT NULL,
+        issues JSONB NOT NULL DEFAULT '[]',
+        pontos_fortes JSONB NOT NULL DEFAULT '[]',
+        pontos_melhoria JSONB NOT NULL DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Itens de follow-up extraídos automaticamente das dailies internas
+    // (ver /api/automations/dailies) — registro próprio além das tarefas
+    // já criadas no ClickUp pelo n8n, pra manter histórico/auditoria aqui.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS daily_tarefas (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        titulo VARCHAR(500) NOT NULL DEFAULT '',
+        participantes JSONB NOT NULL DEFAULT '[]',
+        itens JSONB NOT NULL DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     return NextResponse.json({ success: true, message: "Banco inicializado com sucesso." });
   } catch (error) {
     console.error("Erro ao inicializar banco:", error);
