@@ -57,6 +57,7 @@ export interface Roteiro {
   reviewNote: string | null;
   reviewedByName: string | null;
   reviewedAt: string | null;
+  isTest: boolean;
   createdAt: string;
 }
 
@@ -112,6 +113,7 @@ export interface Reuniao {
   reviewNote: string | null;
   reviewedByName: string | null;
   reviewedAt: string | null;
+  isTest: boolean;
   createdAt: string;
 }
 
@@ -148,6 +150,7 @@ export interface ComercialAnalise {
   pontosMelhoria: string[];
   resultado: ComercialResultado | null;
   valorFechado: number | null;
+  isTest: boolean;
   createdAt: string;
 }
 
@@ -183,7 +186,11 @@ export interface Cliente {
   telefoneWhatsapp: string | null;
   roteirosPorSemana: number | null;
   reunioesPorMes: number | null;
+  especialidade: string | null;
+  cidade: string | null;
+  plano: string | null;
   ativo: boolean;
+  isTest: boolean;
   createdAt: string;
 }
 

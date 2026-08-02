@@ -25,6 +25,7 @@ function mapRow(row: any): ComercialAnalise {
     pontosMelhoria: row.pontos_melhoria,
     resultado: row.resultado,
     valorFechado: row.valor_fechado != null ? Number(row.valor_fechado) : null,
+    isTest: row.is_test,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }

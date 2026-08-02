@@ -33,8 +33,8 @@ export async function POST(req: NextRequest) {
     const validation = await validateRoteiro(variant.format, variant.content);
 
     await pool.query(
-      `INSERT INTO roteiros (author_id, author_name, client_id, client_name, format, title, content, status, score, issues)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      `INSERT INTO roteiros (author_id, author_name, client_id, client_name, format, title, content, status, score, issues, is_test)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true)`,
       [
         authorId,
         authorName,

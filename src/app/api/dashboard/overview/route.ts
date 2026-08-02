@@ -29,6 +29,7 @@ function mapRoteiroRow(row: any): Roteiro {
     reviewNote: row.review_note,
     reviewedByName: row.reviewed_by_name,
     reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
+    isTest: row.is_test,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
@@ -51,6 +52,7 @@ function mapReuniaoRow(row: any): Reuniao {
     reviewNote: row.review_note,
     reviewedByName: row.reviewed_by_name,
     reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
+    isTest: row.is_test,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
@@ -58,8 +60,12 @@ function mapReuniaoRow(row: any): Reuniao {
 export async function GET() {
   try {
     const [roteirosResult, reunioesResult, clientesResult] = await Promise.all([
-      pool.query(`SELECT * FROM roteiros ORDER BY created_at DESC LIMIT $1`, [ROW_LIMIT]),
-      pool.query(`SELECT * FROM reunioes ORDER BY created_at DESC LIMIT $1`, [ROW_LIMIT]),
+      pool.query(`SELECT * FROM roteiros WHERE is_test = false ORDER BY created_at DESC LIMIT $1`, [
+        ROW_LIMIT,
+      ]),
+      pool.query(`SELECT * FROM reunioes WHERE is_test = false ORDER BY created_at DESC LIMIT $1`, [
+        ROW_LIMIT,
+      ]),
       pool.query(
         `SELECT c.nome, u.name AS responsavel_name
          FROM clientes c

@@ -10,8 +10,8 @@ export async function POST() {
     const validation = await validateComercial(COMERCIAL_CONTEUDO);
 
     await pool.query(
-      `INSERT INTO comercial_analises (titulo, participantes, content, status, score, issues, pontos_fortes, pontos_melhoria)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      `INSERT INTO comercial_analises (titulo, participantes, content, status, score, issues, pontos_fortes, pontos_melhoria, is_test)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true)`,
       [
         COMERCIAL_TITULO,
         JSON.stringify(COMERCIAL_PARTICIPANTES),

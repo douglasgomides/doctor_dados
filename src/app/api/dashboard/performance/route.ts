@@ -27,11 +27,11 @@ export async function GET() {
   try {
     const [roteirosResult, reunioesResult] = await Promise.all([
       pool.query(
-        `SELECT author_name, score, status FROM roteiros ORDER BY created_at DESC LIMIT $1`,
+        `SELECT author_name, score, status FROM roteiros WHERE is_test = false ORDER BY created_at DESC LIMIT $1`,
         [ROW_LIMIT]
       ),
       pool.query(
-        `SELECT author_name, score, status FROM reunioes ORDER BY created_at DESC LIMIT $1`,
+        `SELECT author_name, score, status FROM reunioes WHERE is_test = false ORDER BY created_at DESC LIMIT $1`,
         [ROW_LIMIT]
       ),
     ]);

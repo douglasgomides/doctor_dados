@@ -21,8 +21,8 @@ export async function POST(req: NextRequest) {
     const validation = await validateReuniao("mentoria", content);
 
     await pool.query(
-      `INSERT INTO reunioes (author_id, author_name, client_id, client_name, tipo, content, status, score, issues, suggested_agenda, suggested_content_ideas)
-       VALUES ($1,$2,$3,$4,'mentoria',$5,$6,$7,$8,$9,$10)`,
+      `INSERT INTO reunioes (author_id, author_name, client_id, client_name, tipo, content, status, score, issues, suggested_agenda, suggested_content_ideas, is_test)
+       VALUES ($1,$2,$3,$4,'mentoria',$5,$6,$7,$8,$9,$10,true)`,
       [
         authorId,
         authorName,

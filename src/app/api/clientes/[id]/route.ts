@@ -15,7 +15,11 @@ function mapRow(row: any): Cliente {
     telefoneWhatsapp: row.telefone_whatsapp,
     roteirosPorSemana: row.roteiros_por_semana,
     reunioesPorMes: row.reunioes_por_mes,
+    especialidade: row.especialidade,
+    cidade: row.cidade,
+    plano: row.plano,
     ativo: row.ativo,
+    isTest: row.is_test,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
@@ -58,6 +62,18 @@ export async function PUT(
     if (data.ativo !== undefined) {
       fields.push(`ativo = $${paramIndex++}`);
       values.push(!!data.ativo);
+    }
+    if (data.especialidade !== undefined) {
+      fields.push(`especialidade = $${paramIndex++}`);
+      values.push(data.especialidade || null);
+    }
+    if (data.cidade !== undefined) {
+      fields.push(`cidade = $${paramIndex++}`);
+      values.push(data.cidade || null);
+    }
+    if (data.plano !== undefined) {
+      fields.push(`plano = $${paramIndex++}`);
+      values.push(data.plano || null);
     }
 
     if (fields.length === 0) {
