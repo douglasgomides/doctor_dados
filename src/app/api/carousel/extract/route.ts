@@ -3,36 +3,46 @@ import { extractTemplateSpec } from "@/lib/carousel/extract";
 
 const ALLOWED_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
-// Recebe a imagem de referência (multipart/form-data, campo "image") e devolve
-// a especificação estrutural do template (TemplateSpec) extraída por IA com
-// visão. Uso interno — protegido por sessão via src/proxy.ts.
+// Recebe uma ou mais imagens de referência (multipart/form-data, campo
+// "image" repetido — uma por lâmina do carrossel original) e devolve um
+// array de especificações estruturais (uma por imagem, na mesma ordem), pra
+// carrosséis onde cada posição (capa, conteúdo, CTA...) tem um layout
+// diferente. Uso interno — protegido por sessão via src/proxy.ts.
 export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
-    const file = form.get("image");
+    const files = form.getAll("image").filter((f): f is File => f instanceof File);
 
-    if (!(file instanceof File)) {
+    if (files.length === 0) {
       return NextResponse.json(
-        { error: "Envie a imagem de referência no campo 'image'." },
+        { error: "Envie ao menos uma imagem de referência no campo 'image'." },
         { status: 400 }
       );
     }
-    if (!ALLOWED_TYPES.has(file.type)) {
+    if (files.length > 12) {
       return NextResponse.json(
-        { error: "Formato de imagem não suportado. Use PNG, JPEG ou WebP." },
+        { error: "No máximo 12 imagens por vez." },
         { status: 400 }
       );
     }
 
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const base64 = bytes.toString("base64");
+    const invalid = files.find((f) => !ALLOWED_TYPES.has(f.type));
+    if (invalid) {
+      return NextResponse.json(
+        { error: `Formato não suportado em "${invalid.name}". Use PNG, JPEG ou WebP.` },
+        { status: 400 }
+      );
+    }
 
-    const spec = await extractTemplateSpec(
-      base64,
-      file.type as "image/png" | "image/jpeg" | "image/webp"
+    const specs = await Promise.all(
+      files.map(async (file) => {
+        const bytes = Buffer.from(await file.arrayBuffer());
+        const base64 = bytes.toString("base64");
+        return extractTemplateSpec(base64, file.type as "image/png" | "image/jpeg" | "image/webp");
+      })
     );
 
-    return NextResponse.json({ spec });
+    return NextResponse.json({ specs });
   } catch (error) {
     console.error("Erro ao extrair modelo do carrossel:", error);
     const message = error instanceof Error ? error.message : "Erro ao extrair modelo.";

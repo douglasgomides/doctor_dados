@@ -210,6 +210,14 @@ export async function renderSlide(
   content: SlideContent,
   brand: BrandKit
 ): Promise<Buffer> {
+  if (!spec?.canvas || typeof spec.canvas.width !== "number" || typeof spec.canvas.height !== "number") {
+    throw new Error(
+      "Spec de template inválida: falta 'canvas' com width/height/background. Reanalise a imagem de referência ou corrija o JSON."
+    );
+  }
+  if (!Array.isArray(spec.blocks)) {
+    throw new Error("Spec de template inválida: falta o array 'blocks'.");
+  }
   ensureFonts();
   const { width, height, background } = spec.canvas;
   const canvas = createCanvas(width, height);
