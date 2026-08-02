@@ -167,6 +167,18 @@ export async function POST(req: NextRequest) {
       );
     `);
 
+    // Resultado real do negócio pra cada call comercial (fechou/não fechou/
+    // em negociação) + valor, pra cruzar nota de qualidade da IA com
+    // conversão de verdade (ver /api/comercial/[id]).
+    await pool.query(`
+      ALTER TABLE comercial_analises
+      ADD COLUMN IF NOT EXISTS resultado VARCHAR(20);
+    `);
+    await pool.query(`
+      ALTER TABLE comercial_analises
+      ADD COLUMN IF NOT EXISTS valor_fechado NUMERIC;
+    `);
+
     // Itens de follow-up extraídos automaticamente das dailies internas
     // (ver /api/automations/dailies) — registro próprio além das tarefas
     // já criadas no ClickUp pelo n8n, pra manter histórico/auditoria aqui.

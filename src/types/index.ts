@@ -128,6 +128,14 @@ export interface ComercialIssue {
   message: string;
 }
 
+export type ComercialResultado = "fechou" | "nao_fechou" | "em_negociacao";
+
+export const COMERCIAL_RESULTADO_LABELS: Record<ComercialResultado, string> = {
+  fechou: "Fechou",
+  nao_fechou: "Não fechou",
+  em_negociacao: "Em negociação",
+};
+
 export interface ComercialAnalise {
   id: string;
   titulo: string;
@@ -138,6 +146,8 @@ export interface ComercialAnalise {
   issues: ComercialIssue[];
   pontosFortes: string[];
   pontosMelhoria: string[];
+  resultado: ComercialResultado | null;
+  valorFechado: number | null;
   createdAt: string;
 }
 
