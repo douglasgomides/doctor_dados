@@ -72,8 +72,6 @@ export async function POST(req: NextRequest) {
       email: user.email,
       name: user.name,
       role: user.role,
-      accountId: user.account_id,
-      accountName: user.account_name,
     };
 
     const token = await createSessionToken({
@@ -81,8 +79,6 @@ export async function POST(req: NextRequest) {
       email: safeUser.email,
       name: safeUser.name,
       role: safeUser.role,
-      accountId: safeUser.accountId,
-      accountName: safeUser.accountName,
     });
 
     const response = NextResponse.json({ success: true, user: safeUser });

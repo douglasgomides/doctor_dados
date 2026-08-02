@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { User } from "@/types";
-import { MOCK_AD_ACCOUNTS } from "@/lib/mock-data";
 
 interface UsersState {
   users: User[];
@@ -9,7 +8,6 @@ interface UsersState {
   addUser: (user: Omit<User, "id"> & { password?: string }) => Promise<void>;
   updateUser: (id: string, data: Partial<User> & { password?: string }) => Promise<void>;
   removeUser: (id: string) => Promise<void>;
-  getAdAccounts: () => typeof MOCK_AD_ACCOUNTS;
 }
 
 export const useUsersStore = create<UsersState>()((set) => ({
@@ -75,6 +73,4 @@ export const useUsersStore = create<UsersState>()((set) => ({
       console.error("Erro ao remover usuário:", error);
     }
   },
-
-  getAdAccounts: () => MOCK_AD_ACCOUNTS,
 }));

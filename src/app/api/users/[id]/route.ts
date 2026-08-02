@@ -3,11 +3,9 @@ import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
 
 // Autenticação e restrição a papel "master" são impostas pelo middleware
-// (src/middleware.ts) para todo o prefixo /api/users. Antes desta correção,
-// qualquer requisição não autenticada podia trocar a senha, o e-mail ou o
-// papel de qualquer usuário (inclusive o admin master), ou apagar contas.
+// (src/proxy.ts) para todo o prefixo /api/users.
 
-const VALID_ROLES = new Set(["master", "client"]);
+const VALID_ROLES = new Set(["master", "team"]);
 
 // PUT - Atualiza usuário
 export async function PUT(
@@ -49,13 +47,9 @@ export async function PUT(
       fields.push(`role = $${paramIndex++}`);
       values.push(data.role);
     }
-    if (data.accountId !== undefined) {
-      fields.push(`account_id = $${paramIndex++}`);
-      values.push(data.accountId);
-    }
-    if (data.accountName !== undefined) {
-      fields.push(`account_name = $${paramIndex++}`);
-      values.push(data.accountName);
+    if (data.telefoneWhatsapp !== undefined) {
+      fields.push(`telefone_whatsapp = $${paramIndex++}`);
+      values.push(data.telefoneWhatsapp || null);
     }
 
     fields.push(`updated_at = NOW()`);
@@ -63,7 +57,7 @@ export async function PUT(
 
     const result = await pool.query(
       `UPDATE dash_users SET ${fields.join(", ")} WHERE id = $${paramIndex}
-       RETURNING id, email, name, role, account_id, account_name`,
+       RETURNING id, email, name, role, telefone_whatsapp`,
       values
     );
 
@@ -78,8 +72,7 @@ export async function PUT(
         email: row.email,
         name: row.name,
         role: row.role,
-        accountId: row.account_id,
-        accountName: row.account_name,
+        telefoneWhatsapp: row.telefone_whatsapp,
       },
     });
   } catch (error) {

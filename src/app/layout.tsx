@@ -1,23 +1,24 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { ThemeProvider } from "@/components/theme-provider";
+import { Lora, Sora } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Identidade "Doctor Creator Ops": Lora para títulos, Sora para o
+// restante da interface — usadas em todo o app, não só na tela de login.
+const lora = Lora({
+  variable: "--font-lora",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const sora = Sora({
+  variable: "--font-sora",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "DC Analytics - Dashboard de Meta Ads",
+  title: "Doctor Creator Ops",
   description:
-    "Plataforma de análise de distribuição de conteúdo e métricas de Meta Ads",
+    "Central de operação da agência: qualidade de roteiros, reuniões e visão geral dos clientes",
 };
 
 export default function RootLayout({
@@ -26,18 +27,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <TooltipProvider>{children}</TooltipProvider>
-        </ThemeProvider>
+    <html lang="pt-BR" className="dark">
+      <body className={`${lora.variable} ${sora.variable} font-sans antialiased`}>
+        <TooltipProvider>{children}</TooltipProvider>
       </body>
     </html>
   );

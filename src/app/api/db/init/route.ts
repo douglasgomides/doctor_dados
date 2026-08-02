@@ -62,18 +62,93 @@ export async function POST(req: NextRequest) {
     if (existing.rows.length === 0) {
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
       await pool.query(
-        `INSERT INTO dash_users (email, name, password, role, account_id, account_name)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          "admin@dashboard.com",
-          "Admin Master",
-          hashedPassword,
-          "master",
-          "all",
-          "Todas as Contas",
-        ]
+        `INSERT INTO dash_users (email, name, password, role)
+         VALUES ($1, $2, $3, $4)`,
+        ["admin@dashboard.com", "Admin Master", hashedPassword, "master"]
       );
     }
+
+    // Cria tabela roteiros (validador de qualidade de Reels/carrossel/Stories)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS roteiros (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        author_id UUID NOT NULL REFERENCES dash_users(id) ON DELETE CASCADE,
+        author_name VARCHAR(255) NOT NULL,
+        client_name VARCHAR(255) NOT NULL,
+        format VARCHAR(20) NOT NULL,
+        title VARCHAR(255) NOT NULL DEFAULT '',
+        content TEXT NOT NULL,
+        status VARCHAR(20) NOT NULL,
+        score INTEGER NOT NULL,
+        issues JSONB NOT NULL DEFAULT '[]',
+        review_note TEXT,
+        reviewed_by_name VARCHAR(255),
+        reviewed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Cria tabela reunioes (validador de qualidade de reuniões de mentoria)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS reunioes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        author_id UUID NOT NULL REFERENCES dash_users(id) ON DELETE CASCADE,
+        author_name VARCHAR(255) NOT NULL,
+        client_name VARCHAR(255) NOT NULL,
+        tipo VARCHAR(20) NOT NULL,
+        content TEXT NOT NULL,
+        status VARCHAR(20) NOT NULL,
+        score INTEGER NOT NULL,
+        issues JSONB NOT NULL DEFAULT '[]',
+        suggested_agenda JSONB NOT NULL DEFAULT '[]',
+        review_note TEXT,
+        reviewed_by_name VARCHAR(255),
+        reviewed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Cria tabela clientes (médicos atendidos pela agência), com um
+    // responsável da equipe e metas de cadência — base para automatizar
+    // cobrança/follow-up mais pra frente.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS clientes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        nome VARCHAR(255) UNIQUE NOT NULL,
+        responsavel_id UUID REFERENCES dash_users(id) ON DELETE SET NULL,
+        telefone_whatsapp VARCHAR(30),
+        roteiros_por_semana INTEGER,
+        reunioes_por_mes INTEGER,
+        ativo BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Liga roteiros/reunioes ao cadastro de clientes (preenchido
+    // automaticamente na hora do envio — ver /api/roteiros e /api/reunioes).
+    await pool.query(`
+      ALTER TABLE roteiros
+      ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clientes(id) ON DELETE SET NULL;
+    `);
+    await pool.query(`
+      ALTER TABLE reunioes
+      ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clientes(id) ON DELETE SET NULL;
+    `);
+
+    // WhatsApp do membro da equipe — destino dos avisos automáticos de
+    // pendência/cadência (ver /api/automations/alerts).
+    await pool.query(`
+      ALTER TABLE dash_users
+      ADD COLUMN IF NOT EXISTS telefone_whatsapp VARCHAR(30);
+    `);
+
+    // Ideias de conteúdo sugeridas pela IA a partir da transcrição da
+    // reunião (ver src/lib/reuniao-validator.ts).
+    await pool.query(`
+      ALTER TABLE reunioes
+      ADD COLUMN IF NOT EXISTS suggested_content_ideas JSONB NOT NULL DEFAULT '[]';
+    `);
 
     return NextResponse.json({ success: true, message: "Banco inicializado com sucesso." });
   } catch (error) {

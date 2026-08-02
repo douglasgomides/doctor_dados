@@ -15,8 +15,6 @@ export interface SessionPayload {
   email: string;
   name: string;
   role: UserRole;
-  accountId: string;
-  accountName: string;
   exp: number;
 }
 
