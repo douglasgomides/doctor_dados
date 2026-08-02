@@ -36,9 +36,158 @@ import {
   AlertTriangle,
   ListChecks,
   Lightbulb,
+  Contact,
+  AlertOctagon,
 } from "lucide-react";
+import { AreaChart, Area, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { STATUS_TIER_EMOJI, scoreToTier } from "@/lib/status-tier";
 import { FeedItem, Roteiro, Reuniao, ROTEIRO_FORMAT_LABELS, REUNIAO_TIPO_LABELS } from "@/types";
+
+const SPARKLINE_DAYS = 14;
+const STATUS_GOOD = "#1a9c6d";
+const STATUS_BAD = "#c8503b";
+
+function diaISO(iso: string) {
+  return iso.slice(0, 10);
+}
+
+// Últimos N dias (incluindo hoje), no formato AAAA-MM-DD, mais antigo primeiro.
+function ultimosDias(n: number): string[] {
+  const dias: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    dias.push(d.toISOString().slice(0, 10));
+  }
+  return dias;
+}
+
+function serieDiaria(items: { createdAt: string }[]): { dia: string; valor: number }[] {
+  const contagem = new Map<string, number>();
+  for (const item of items) {
+    const dia = diaISO(item.createdAt);
+    contagem.set(dia, (contagem.get(dia) || 0) + 1);
+  }
+  return ultimosDias(SPARKLINE_DAYS).map((dia) => ({ dia, valor: contagem.get(dia) || 0 }));
+}
+
+function variacaoSemanal(items: { createdAt: string }[]): number | null {
+  const hoje = new Date();
+  const seteAtras = new Date();
+  seteAtras.setDate(hoje.getDate() - 7);
+  const catorzeAtras = new Date();
+  catorzeAtras.setDate(hoje.getDate() - 14);
+
+  const semanaAtual = items.filter((i) => new Date(i.createdAt) > seteAtras).length;
+  const semanaAnterior = items.filter(
+    (i) => new Date(i.createdAt) <= seteAtras && new Date(i.createdAt) > catorzeAtras
+  ).length;
+
+  if (semanaAnterior === 0) return semanaAtual > 0 ? 100 : null;
+  return Math.round(((semanaAtual - semanaAnterior) / semanaAnterior) * 100);
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  subtitle,
+  variacao,
+  serie,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number | string;
+  subtitle?: string;
+  variacao?: number | null;
+  serie?: { dia: string; valor: number }[];
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium">
+        <span className="text-primary">{icon}</span>
+        {label}
+      </div>
+      <div className="text-2xl font-bold font-heading">{value}</div>
+      {subtitle && <p className="text-xs text-muted-foreground -mt-2">{subtitle}</p>}
+      {variacao !== undefined && variacao !== null && (
+        <p className={"text-xs " + (variacao >= 0 ? "text-emerald-600" : "text-destructive")}>
+          {variacao >= 0 ? "↑" : "↓"} {Math.abs(variacao)}% vs. semana passada
+        </p>
+      )}
+      {serie && (
+        <div className="h-10 -mx-1">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={serie} margin={{ top: 2, right: 4, bottom: 0, left: 4 }}>
+              <defs>
+                <linearGradient id={`spark-${label}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <Area
+                type="monotone"
+                dataKey="valor"
+                stroke="var(--primary)"
+                strokeWidth={2}
+                fill={`url(#spark-${label})`}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusDonut({ aprovados, ajustar }: { aprovados: number; ajustar: number }) {
+  const total = aprovados + ajustar;
+  const data = [
+    { name: "Aprovados", value: aprovados, color: STATUS_GOOD },
+    { name: "Para ajustar", value: ajustar, color: STATUS_BAD },
+  ];
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-5 flex items-center gap-5">
+      <div className="h-28 w-28 shrink-0 relative">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="value"
+              innerRadius={38}
+              outerRadius={54}
+              startAngle={90}
+              endAngle={-270}
+              isAnimationActive={false}
+            >
+              {data.map((entry) => (
+                <Cell key={entry.name} fill={entry.color} stroke="var(--card)" strokeWidth={2} />
+              ))}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-lg font-bold font-heading leading-none">{total}</span>
+          <span className="text-[10px] text-muted-foreground">total</span>
+        </div>
+      </div>
+      <div className="space-y-2 text-sm">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+          Roteiros + Reuniões
+        </p>
+        {data.map((d) => (
+          <div key={d.name} className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+            <span className="font-medium">{d.value}</span>
+            <span className="text-muted-foreground">{d.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", {
@@ -87,6 +236,45 @@ export default function VisaoGeralPage() {
       : overview.alerts.reunioesParaAjustar.filter((r) => r.clientName === cliente);
   }, [overview, cliente]);
 
+  const roteirosFeed = useMemo(
+    () => feedFiltrado.filter((f): f is { type: "roteiro"; data: Roteiro } => f.type === "roteiro"),
+    [feedFiltrado]
+  );
+  const reunioesFeed = useMemo(
+    () => feedFiltrado.filter((f): f is { type: "reuniao"; data: Reuniao } => f.type === "reuniao"),
+    [feedFiltrado]
+  );
+
+  const stats = useMemo(() => {
+    const roteirosItems = roteirosFeed.map((f) => f.data);
+    const reunioesItems = reunioesFeed.map((f) => f.data);
+    const roteirosAprovados = roteirosItems.filter((r) => r.status === "aprovado").length;
+    const reunioesAprovadas = reunioesItems.filter((r) => r.status === "aprovado").length;
+    const pendencias = clientesFiltrados.reduce((acc, c) => acc + c.pendentesAjuste, 0);
+
+    return {
+      roteiros: {
+        total: roteirosItems.length,
+        aprovados: roteirosAprovados,
+        serie: serieDiaria(roteirosItems),
+        variacao: variacaoSemanal(roteirosItems),
+      },
+      reunioes: {
+        total: reunioesItems.length,
+        aprovadas: reunioesAprovadas,
+        serie: serieDiaria(reunioesItems),
+        variacao: variacaoSemanal(reunioesItems),
+      },
+      clientesAtivos: clientesFiltrados.length,
+      pendencias,
+      donut: {
+        aprovados: roteirosAprovados + reunioesAprovadas,
+        ajustar:
+          roteirosItems.length - roteirosAprovados + (reunioesItems.length - reunioesAprovadas),
+      },
+    };
+  }, [roteirosFeed, reunioesFeed, clientesFiltrados]);
+
   if (loading && !overview) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -133,6 +321,42 @@ export default function VisaoGeralPage() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Stats gerais */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          icon={<ClipboardCheck className="h-4 w-4" />}
+          label="Roteiros"
+          value={stats.roteiros.total}
+          subtitle={`${stats.roteiros.aprovados} aprovados`}
+          variacao={stats.roteiros.variacao}
+          serie={stats.roteiros.serie}
+        />
+        <StatCard
+          icon={<Users2 className="h-4 w-4" />}
+          label="Reuniões"
+          value={stats.reunioes.total}
+          subtitle={`${stats.reunioes.aprovadas} aprovadas`}
+          variacao={stats.reunioes.variacao}
+          serie={stats.reunioes.serie}
+        />
+        <StatCard
+          icon={<Contact className="h-4 w-4" />}
+          label="Clientes ativos"
+          value={stats.clientesAtivos}
+        />
+        <StatCard
+          icon={<AlertOctagon className="h-4 w-4" />}
+          label="Pendências"
+          value={stats.pendencias}
+          subtitle={stats.pendencias > 0 ? "precisam de ajuste" : "tudo em dia"}
+        />
+      </div>
+
+      {/* Distribuição de status */}
+      {stats.donut.aprovados + stats.donut.ajustar > 0 && (
+        <StatusDonut aprovados={stats.donut.aprovados} ajustar={stats.donut.ajustar} />
+      )}
 
       {/* Cards de alerta */}
       <div className="grid gap-4 sm:grid-cols-2">
