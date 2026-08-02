@@ -1,5 +1,10 @@
 import pool from "@/lib/db";
 
+interface ClienteBasico {
+  id: string;
+  nome: string;
+}
+
 // Toda submissão de roteiro/reunião carrega um nome de cliente em texto
 // livre (o time não deveria precisar cadastrar o médico antes de validar um
 // conteúdo). Essa função garante que exista um registro em `clientes`
@@ -29,4 +34,48 @@ export async function findOrCreateClienteId(rawNome: string): Promise<string> {
     }
     throw error;
   }
+}
+
+// Faixa Unicode dos diacríticos combináveis (0300–036F), montada por código
+// de caractere para não depender de digitar o glifo combinável no arquivo.
+const DIACRITICOS_RE = new RegExp(
+  `[${String.fromCharCode(0x0300)}-${String.fromCharCode(0x036f)}]`,
+  "g"
+);
+
+function palavrasNormalizadas(nome: string): Set<string> {
+  const semAcento = nome.normalize("NFD").replace(DIACRITICOS_RE, "").toLowerCase();
+  const semHonorifico = semAcento.replace(/\b(dr|dra|doutor|doutora)\b\.?/g, " ");
+  return new Set(semHonorifico.split(/\s+/).filter(Boolean));
+}
+
+function nomesCorrespondem(a: string, b: string): boolean {
+  const palavrasA = palavrasNormalizadas(a);
+  const palavrasB = palavrasNormalizadas(b);
+  const [menor, maior] = palavrasA.size <= palavrasB.size ? [palavrasA, palavrasB] : [palavrasB, palavrasA];
+  if (menor.size === 0) return false;
+  return [...menor].every((palavra) => maior.has(palavra));
+}
+
+// Cruza a lista de participantes de uma transcrição (nomes em texto livre,
+// como aparecem no Google Meet) com o cadastro de clientes ativos. Só
+// retorna um cliente quando exatamente um bate — nenhum ou mais de um
+// resultado significa "não dá pra saber com segurança", e quem chama deve
+// tratar isso como "não é uma reunião de cliente" em vez de arriscar
+// registrar no cliente errado.
+export async function findClienteAtivoByParticipantes(
+  participantes: string[]
+): Promise<ClienteBasico | null> {
+  const result = await pool.query<ClienteBasico>(
+    "SELECT id, nome FROM clientes WHERE ativo = true"
+  );
+
+  const encontrados = new Map<string, ClienteBasico>();
+  for (const cliente of result.rows) {
+    const bateu = participantes.some((participante) => nomesCorrespondem(participante, cliente.nome));
+    if (bateu) encontrados.set(cliente.id, cliente);
+  }
+
+  if (encontrados.size !== 1) return null;
+  return [...encontrados.values()][0];
 }
