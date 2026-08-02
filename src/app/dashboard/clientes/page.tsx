@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuthStore } from "@/store/auth-store";
 import { useClientesStore } from "@/store/clientes-store";
 import { useUsersStore } from "@/store/users-store";
@@ -32,10 +32,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Users2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Users2, Plus, Pencil, Trash2, Search } from "lucide-react";
 import { Cliente } from "@/types";
 
 const NO_RESPONSAVEL = "none";
+const TODOS_RESPONSAVEIS = "todos";
+const TODOS_STATUS = "todos";
 
 export default function ClientesPage() {
   const currentUser = useAuthStore((s) => s.user);
@@ -51,7 +53,15 @@ export default function ClientesPage() {
     telefoneWhatsapp: "",
     roteirosPorSemana: "",
     reunioesPorMes: "",
+    especialidade: "",
+    cidade: "",
+    plano: "",
   });
+
+  const [busca, setBusca] = useState("");
+  const [filtroResponsavel, setFiltroResponsavel] = useState(TODOS_RESPONSAVEIS);
+  const [filtroStatus, setFiltroStatus] = useState(TODOS_STATUS);
+  const [ocultarDemo, setOcultarDemo] = useState(true);
 
   useEffect(() => {
     fetchClientes();
@@ -62,10 +72,36 @@ export default function ClientesPage() {
     redirect("/dashboard/visao-geral");
   }
 
+  const clientesFiltrados = useMemo(() => {
+    return clientes.filter((c) => {
+      if (ocultarDemo && c.isTest) return false;
+      if (busca.trim() && !c.nome.toLowerCase().includes(busca.trim().toLowerCase())) return false;
+      if (filtroResponsavel !== TODOS_RESPONSAVEIS) {
+        if (filtroResponsavel === NO_RESPONSAVEL) {
+          if (c.responsavelId) return false;
+        } else if (c.responsavelId !== filtroResponsavel) {
+          return false;
+        }
+      }
+      if (filtroStatus === "ativo" && !c.ativo) return false;
+      if (filtroStatus === "inativo" && c.ativo) return false;
+      return true;
+    });
+  }, [clientes, busca, filtroResponsavel, filtroStatus, ocultarDemo]);
+
   const openAdd = () => {
     setEditing(null);
     setError("");
-    setForm({ nome: "", responsavelId: NO_RESPONSAVEL, telefoneWhatsapp: "", roteirosPorSemana: "", reunioesPorMes: "" });
+    setForm({
+      nome: "",
+      responsavelId: NO_RESPONSAVEL,
+      telefoneWhatsapp: "",
+      roteirosPorSemana: "",
+      reunioesPorMes: "",
+      especialidade: "",
+      cidade: "",
+      plano: "",
+    });
     setShowDialog(true);
   };
 
@@ -78,6 +114,9 @@ export default function ClientesPage() {
       telefoneWhatsapp: cliente.telefoneWhatsapp || "",
       roteirosPorSemana: cliente.roteirosPorSemana?.toString() || "",
       reunioesPorMes: cliente.reunioesPorMes?.toString() || "",
+      especialidade: cliente.especialidade || "",
+      cidade: cliente.cidade || "",
+      plano: cliente.plano || "",
     });
     setShowDialog(true);
   };
@@ -91,6 +130,9 @@ export default function ClientesPage() {
       telefoneWhatsapp: form.telefoneWhatsapp.trim() || null,
       roteirosPorSemana: form.roteirosPorSemana ? Number(form.roteirosPorSemana) : null,
       reunioesPorMes: form.reunioesPorMes ? Number(form.reunioesPorMes) : null,
+      especialidade: form.especialidade.trim() || null,
+      cidade: form.cidade.trim() || null,
+      plano: form.plano.trim() || null,
     };
 
     const result = editing
@@ -108,8 +150,11 @@ export default function ClientesPage() {
     await updateCliente(cliente.id, { ativo: !cliente.ativo });
   };
 
-  const handleDelete = async (id: string) => {
-    await removeCliente(id);
+  const handleDelete = async (cliente: Cliente) => {
+    if (!window.confirm(`Excluir o cliente "${cliente.nome}"? Essa ação não pode ser desfeita.`)) {
+      return;
+    }
+    await removeCliente(cliente.id);
   };
 
   return (
@@ -134,8 +179,50 @@ export default function ClientesPage() {
             <CardTitle className="text-base">Clientes cadastrados</CardTitle>
           </div>
           <CardDescription>
-            {clientes.length} cliente{clientes.length !== 1 ? "s" : ""} no sistema
+            {clientesFiltrados.length} de {clientes.length} cliente{clientes.length !== 1 ? "s" : ""}
           </CardDescription>
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por nome..."
+                className="h-9 pl-8"
+              />
+            </div>
+            <Select value={filtroResponsavel} onValueChange={setFiltroResponsavel}>
+              <SelectTrigger className="h-9 w-[170px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TODOS_RESPONSAVEIS}>Todo responsável</SelectItem>
+                <SelectItem value={NO_RESPONSAVEL}>Sem responsável</SelectItem>
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filtroStatus} onValueChange={setFiltroStatus}>
+              <SelectTrigger className="h-9 w-[130px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TODOS_STATUS}>Todo status</SelectItem>
+                <SelectItem value="ativo">Ativo</SelectItem>
+                <SelectItem value="inativo">Inativo</SelectItem>
+              </SelectContent>
+            </Select>
+            <Badge
+              variant={ocultarDemo ? "outline" : "default"}
+              className="cursor-pointer h-9 px-3"
+              onClick={() => setOcultarDemo(!ocultarDemo)}
+            >
+              {ocultarDemo ? "Demonstração oculta" : "Mostrando demonstração"}
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border border-border/50 overflow-hidden overflow-x-auto">
@@ -151,9 +238,23 @@ export default function ClientesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clientes.map((c) => (
+                {clientesFiltrados.map((c) => (
                   <TableRow key={c.id}>
-                    <TableCell className="font-medium">{c.nome}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        {c.nome}
+                        {c.isTest && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                            demo
+                          </Badge>
+                        )}
+                      </div>
+                      {(c.especialidade || c.cidade || c.plano) && (
+                        <p className="text-xs text-muted-foreground mt-0.5 font-normal">
+                          {[c.especialidade, c.cidade, c.plano].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                    </TableCell>
                     <TableCell className="text-sm">
                       {c.responsavelName || (
                         <span className="text-destructive/80">sem responsável</span>
@@ -193,7 +294,7 @@ export default function ClientesPage() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-destructive hover:text-destructive"
-                          onClick={() => handleDelete(c.id)}
+                          onClick={() => handleDelete(c)}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -201,11 +302,12 @@ export default function ClientesPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {clientes.length === 0 && (
+                {clientesFiltrados.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                      Nenhum cliente cadastrado ainda. Clientes são criados automaticamente
-                      quando um roteiro ou reunião é enviado com o nome dele.
+                      {clientes.length === 0
+                        ? "Nenhum cliente cadastrado ainda. Clientes são criados automaticamente quando um roteiro ou reunião é enviado com o nome dele."
+                        : "Nenhum cliente encontrado com esses filtros."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -282,6 +384,35 @@ export default function ClientesPage() {
                   className="h-9"
                 />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Especialidade</Label>
+                <Input
+                  value={form.especialidade}
+                  onChange={(e) => setForm({ ...form, especialidade: e.target.value })}
+                  placeholder="Ex: Ginecologia"
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Cidade</Label>
+                <Input
+                  value={form.cidade}
+                  onChange={(e) => setForm({ ...form, cidade: e.target.value })}
+                  placeholder="Ex: São Paulo"
+                  className="h-9"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Plano / ticket</Label>
+              <Input
+                value={form.plano}
+                onChange={(e) => setForm({ ...form, plano: e.target.value })}
+                placeholder="Ex: Premium, R$ 5.000/mês"
+                className="h-9"
+              />
             </div>
             {error && (
               <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">

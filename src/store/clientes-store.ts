@@ -11,6 +11,9 @@ interface ClientesState {
     telefoneWhatsapp?: string | null;
     roteirosPorSemana?: number | null;
     reunioesPorMes?: number | null;
+    especialidade?: string | null;
+    cidade?: string | null;
+    plano?: string | null;
   }) => Promise<{ success: boolean; error?: string }>;
   updateCliente: (
     id: string,
@@ -20,6 +23,9 @@ interface ClientesState {
       telefoneWhatsapp: string | null;
       roteirosPorSemana: number | null;
       reunioesPorMes: number | null;
+      especialidade: string | null;
+      cidade: string | null;
+      plano: string | null;
       ativo: boolean;
     }>
   ) => Promise<{ success: boolean; error?: string }>;
