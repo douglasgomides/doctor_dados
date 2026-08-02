@@ -9,14 +9,20 @@ import pool from "@/lib/db";
 // "x-automation-secret", no mesmo padrão de /api/db/init.
 
 const PENDING_LIMIT = 100;
+const URGENTE_HORAS = 48;
 
 interface Alerta {
   tipo: "roteiro_ajustar" | "reuniao_ajustar" | "cadencia_roteiros" | "cadencia_reunioes";
+  urgente: boolean;
   clienteNome: string;
   responsavelNome: string | null;
   responsavelWhatsapp: string | null;
   mensagem: string;
   detalhe: Record<string, unknown>;
+}
+
+function horasDesde(dataIso: string): number {
+  return (Date.now() - new Date(dataIso).getTime()) / (1000 * 60 * 60);
 }
 
 export async function GET(req: NextRequest) {
@@ -73,35 +79,41 @@ export async function GET(req: NextRequest) {
     const alertas: Alerta[] = [];
 
     for (const row of roteirosResult.rows) {
+      const criadoEm = new Date(row.created_at).toISOString();
+      const urgente = horasDesde(criadoEm) >= URGENTE_HORAS;
       alertas.push({
         tipo: "roteiro_ajustar",
+        urgente,
         clienteNome: row.client_name,
         responsavelNome: row.responsavel_name,
         responsavelWhatsapp: row.responsavel_whatsapp,
-        mensagem: `O roteiro de ${row.format} para ${row.client_name} (enviado por ${row.author_name}, nota ${row.score}/100) está pendente de ajuste.`,
+        mensagem: `${urgente ? "[URGENTE] " : ""}O roteiro de ${row.format} para ${row.client_name} (enviado por ${row.author_name}, nota ${row.score}/100) está pendente de ajuste${urgente ? ` há mais de ${URGENTE_HORAS}h` : ""}.`,
         detalhe: {
           roteiroId: row.id,
           format: row.format,
           score: row.score,
           autorNome: row.author_name,
-          criadoEm: new Date(row.created_at).toISOString(),
+          criadoEm,
         },
       });
     }
 
     for (const row of reunioesResult.rows) {
+      const criadoEm = new Date(row.created_at).toISOString();
+      const urgente = horasDesde(criadoEm) >= URGENTE_HORAS;
       alertas.push({
         tipo: "reuniao_ajustar",
+        urgente,
         clienteNome: row.client_name,
         responsavelNome: row.responsavel_name,
         responsavelWhatsapp: row.responsavel_whatsapp,
-        mensagem: `A reunião de ${row.tipo} com ${row.client_name} (registrada por ${row.author_name}, nota ${row.score}/100) está pendente de ajuste.`,
+        mensagem: `${urgente ? "[URGENTE] " : ""}A reunião de ${row.tipo} com ${row.client_name} (registrada por ${row.author_name}, nota ${row.score}/100) está pendente de ajuste${urgente ? ` há mais de ${URGENTE_HORAS}h` : ""}.`,
         detalhe: {
           reuniaoId: row.id,
           tipo: row.tipo,
           score: row.score,
           autorNome: row.author_name,
-          criadoEm: new Date(row.created_at).toISOString(),
+          criadoEm,
         },
       });
     }
@@ -113,6 +125,7 @@ export async function GET(req: NextRequest) {
       if (row.roteiros_por_semana != null && roteirosSemana < row.roteiros_por_semana) {
         alertas.push({
           tipo: "cadencia_roteiros",
+          urgente: false,
           clienteNome: row.nome,
           responsavelNome: row.responsavel_name,
           responsavelWhatsapp: row.responsavel_whatsapp,
@@ -124,6 +137,7 @@ export async function GET(req: NextRequest) {
       if (row.reunioes_por_mes != null && reunioesMes < row.reunioes_por_mes) {
         alertas.push({
           tipo: "cadencia_reunioes",
+          urgente: false,
           clienteNome: row.nome,
           responsavelNome: row.responsavel_name,
           responsavelWhatsapp: row.responsavel_whatsapp,

@@ -14,6 +14,7 @@ import {
   Users2,
   Sparkles,
   Contact,
+  TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -22,7 +23,10 @@ import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { UserRole } from "@/types";
 
-const VISAO_GERAL_ITEMS = [{ name: "Visão Geral", href: "/dashboard/visao-geral", icon: Sparkles }];
+const VISAO_GERAL_ITEMS = [
+  { name: "Visão Geral", href: "/dashboard/visao-geral", icon: Sparkles },
+  { name: "Performance", href: "/dashboard/performance", icon: TrendingUp },
+];
 
 const QUALIDADE_ITEMS = [
   { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },

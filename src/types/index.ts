@@ -163,3 +163,24 @@ export interface DashboardOverview {
   alerts: DashboardAlerts;
   feed: FeedItem[];
 }
+
+// ============================================
+// PERFORMANCE — nota média e taxa de aprovação por pessoa da
+// equipe, pra pegar problema de qualidade recorrente cedo
+// ============================================
+
+export interface TeamMemberPerformance {
+  authorName: string;
+  roteirosTotal: number;
+  roteirosScoreMedia: number;
+  roteirosTaxaAprovacao: number;
+  reunioesTotal: number;
+  reunioesScoreMedia: number;
+  reunioesTaxaAprovacao: number;
+}
+
+export interface PerformanceOverview {
+  membros: TeamMemberPerformance[];
+  mediaGeralRoteiros: number;
+  mediaGeralReunioes: number;
+}
