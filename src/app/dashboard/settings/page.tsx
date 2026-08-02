@@ -18,13 +18,73 @@ export default function SettingsPage() {
     setLoading("gerar");
     setFeedback(null);
     try {
-      const res = await fetch("/api/admin/seed-exemplos", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erro ao gerar dados de exemplo.");
+      const initRes = await fetch("/api/admin/seed-exemplos/init", { method: "POST" });
+      const init = await initRes.json();
+      if (!initRes.ok) throw new Error(init.error || "Erro ao preparar dados de exemplo.");
+
+      const [ana, rafael, juliana] = init.authors;
+      const [ricardo, fernanda, marcelo, beatriz] = init.clients;
+
+      const chamadas = [
+        fetch("/api/admin/seed-exemplos/roteiro", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            which: "bom",
+            authorId: ana.id,
+            authorName: ana.name,
+            clientId: ricardo.id,
+            clientName: ricardo.nome,
+          }),
+        }),
+        fetch("/api/admin/seed-exemplos/roteiro", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            which: "ajustar",
+            authorId: rafael.id,
+            authorName: rafael.name,
+            clientId: fernanda.id,
+            clientName: fernanda.nome,
+          }),
+        }),
+        fetch("/api/admin/seed-exemplos/reuniao", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            which: "boa",
+            authorId: juliana.id,
+            authorName: juliana.name,
+            clientId: marcelo.id,
+            clientName: marcelo.nome,
+          }),
+        }),
+        fetch("/api/admin/seed-exemplos/reuniao", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            which: "ajustar",
+            authorId: ana.id,
+            authorName: ana.name,
+            clientId: beatriz.id,
+            clientName: beatriz.nome,
+          }),
+        }),
+        fetch("/api/admin/seed-exemplos/comercial", { method: "POST" }),
+      ];
+
+      const respostas = await Promise.all(chamadas);
+      const resultados = await Promise.all(respostas.map((r) => r.json()));
+      const falhas = resultados.filter((r) => !r.success);
+
+      if (falhas.length > 0) {
+        throw new Error(falhas[0].error || `${falhas.length} item(ns) falharam ao gerar.`);
+      }
+
       setFeedback({
         type: "sucesso",
         texto:
-          "Exemplos criados em Roteiros, Reuniões, Comercial e Performance (cliente \"Dr. Exemplo (demonstração)\"). Dá uma olhada nessas telas.",
+          "Exemplos criados em Roteiros, Reuniões, Comercial e Performance, com médicos e pessoas da equipe variados. Dá uma olhada nessas telas.",
       });
     } catch (error) {
       setFeedback({ type: "erro", texto: error instanceof Error ? error.message : "Erro inesperado." });
