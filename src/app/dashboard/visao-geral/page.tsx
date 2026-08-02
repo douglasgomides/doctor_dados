@@ -40,6 +40,7 @@ import {
   AlertOctagon,
 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { STATUS_TIER_EMOJI, scoreToTier } from "@/lib/status-tier";
 import { FeedItem, Roteiro, Reuniao, ROTEIRO_FORMAT_LABELS, REUNIAO_TIPO_LABELS } from "@/types";
 
@@ -322,212 +323,219 @@ export default function VisaoGeralPage() {
         </Select>
       </div>
 
-      {/* Stats gerais */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          icon={<ClipboardCheck className="h-4 w-4" />}
-          label="Roteiros"
-          value={stats.roteiros.total}
-          subtitle={`${stats.roteiros.aprovados} aprovados`}
-          variacao={stats.roteiros.variacao}
-          serie={stats.roteiros.serie}
-        />
-        <StatCard
-          icon={<Users2 className="h-4 w-4" />}
-          label="Reuniões"
-          value={stats.reunioes.total}
-          subtitle={`${stats.reunioes.aprovadas} aprovadas`}
-          variacao={stats.reunioes.variacao}
-          serie={stats.reunioes.serie}
-        />
-        <StatCard
-          icon={<Contact className="h-4 w-4" />}
-          label="Clientes ativos"
-          value={stats.clientesAtivos}
-        />
-        <StatCard
-          icon={<AlertOctagon className="h-4 w-4" />}
-          label="Pendências"
-          value={stats.pendencias}
-          subtitle={stats.pendencias > 0 ? "precisam de ajuste" : "tudo em dia"}
-        />
-      </div>
+      <Tabs defaultValue="resumo">
+        <TabsList>
+          <TabsTrigger value="resumo">Resumo</TabsTrigger>
+          <TabsTrigger value="clientes">Clientes</TabsTrigger>
+          <TabsTrigger value="atividade">Atividade</TabsTrigger>
+        </TabsList>
 
-      {/* Distribuição de status */}
-      {stats.donut.aprovados + stats.donut.ajustar > 0 && (
-        <StatusDonut aprovados={stats.donut.aprovados} ajustar={stats.donut.ajustar} />
-      )}
-
-      {/* Cards de alerta */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <AlertCard
-          icon={<ClipboardCheck className="h-4 w-4" />}
-          title="Roteiros para ajustar"
-          count={roteirosParaAjustar.length}
-          items={roteirosParaAjustar.map((r) => ({
-            key: r.id,
-            label: r.clientName,
-            detail: `${ROTEIRO_FORMAT_LABELS[r.format]} · nota ${r.score}/100`,
-          }))}
-        />
-        <AlertCard
-          icon={<Users2 className="h-4 w-4" />}
-          title="Reuniões para ajustar"
-          count={reunioesParaAjustar.length}
-          items={reunioesParaAjustar.map((r) => ({
-            key: r.id,
-            label: r.clientName,
-            detail: `${REUNIAO_TIPO_LABELS[r.tipo]} · nota ${r.score}/100`,
-          }))}
-        />
-      </div>
-
-      {/* Tabela de clientes */}
-      <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider font-heading">
-          Clientes
-        </h2>
-        <div className="rounded-xl border border-border overflow-hidden overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Responsável</TableHead>
-                <TableHead>Último roteiro</TableHead>
-                <TableHead>Última reunião</TableHead>
-                <TableHead>Pendências</TableHead>
-                <TableHead className="text-center">Ação</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {clientesFiltrados.map((c) => (
-                <TableRow key={c.cliente}>
-                  <TableCell className="font-medium">{c.cliente}</TableCell>
-                  <TableCell className="text-sm">
-                    {c.responsavelName || (
-                      <span className="text-destructive/80">sem responsável</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {c.ultimoRoteiro ? (
-                      <>
-                        {STATUS_TIER_EMOJI[c.ultimoRoteiro.statusTier]} {formatDate(c.ultimoRoteiro.data)}
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground/50">sem registro</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {c.ultimaReuniao ? (
-                      <>
-                        {STATUS_TIER_EMOJI[c.ultimaReuniao.statusTier]} {formatDate(c.ultimaReuniao.data)}
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground/50">sem registro</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={c.pendentesAjuste > 0 ? "destructive" : "outline"}>
-                      {c.pendentesAjuste}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Button variant="outline" size="sm" onClick={() => setCliente(c.cliente)}>
-                      Ver perfil
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {clientesFiltrados.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                    Nenhum cliente com validações registradas ainda.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-
-      {/* Pauta sugerida para as próximas reuniões */}
-      {clientesFiltrados.some((c) => c.proximaPauta.length > 0) && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider font-heading">
-            Pauta para as próximas reuniões
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {clientesFiltrados
-              .filter((c) => c.proximaPauta.length > 0)
-              .map((c) => (
-                <div key={c.cliente} className="rounded-xl border border-border bg-card/40 p-4 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <ListChecks className="h-4 w-4 text-primary shrink-0" />
-                    <span className="text-sm font-medium">{c.cliente}</span>
-                  </div>
-                  <ul className="space-y-1">
-                    {c.proximaPauta.map((item, i) => (
-                      <li key={i} className="text-sm text-muted-foreground">
-                        • {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+        <TabsContent value="resumo" className="space-y-6 mt-4">
+          {/* Stats gerais */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              icon={<ClipboardCheck className="h-4 w-4" />}
+              label="Roteiros"
+              value={stats.roteiros.total}
+              subtitle={`${stats.roteiros.aprovados} aprovados`}
+              variacao={stats.roteiros.variacao}
+              serie={stats.roteiros.serie}
+            />
+            <StatCard
+              icon={<Users2 className="h-4 w-4" />}
+              label="Reuniões"
+              value={stats.reunioes.total}
+              subtitle={`${stats.reunioes.aprovadas} aprovadas`}
+              variacao={stats.reunioes.variacao}
+              serie={stats.reunioes.serie}
+            />
+            <StatCard
+              icon={<Contact className="h-4 w-4" />}
+              label="Clientes ativos"
+              value={stats.clientesAtivos}
+            />
+            <StatCard
+              icon={<AlertOctagon className="h-4 w-4" />}
+              label="Pendências"
+              value={stats.pendencias}
+              subtitle={stats.pendencias > 0 ? "precisam de ajuste" : "tudo em dia"}
+            />
           </div>
-        </div>
-      )}
 
-      {/* Feed cronológico */}
-      <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider font-heading">
-          Atividade recente
-        </h2>
-        <div className="space-y-2">
-          {feedFiltrado.map((item) => (
-            <button
-              key={`${item.type}-${item.data.id}`}
-              onClick={() => setDetalhe(item)}
-              className="w-full text-left flex items-start gap-3 rounded-xl border border-border bg-card/40 hover:bg-card transition-colors p-4"
-            >
-              <div className="flex items-center justify-center h-8 w-8 rounded-lg shrink-0 bg-primary/15 text-primary">
-                {item.type === "reuniao" ? (
-                  <Users2 className="h-4 w-4" />
-                ) : (
-                  <ClipboardCheck className="h-4 w-4" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium">{item.data.clientName}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {item.type === "reuniao"
-                      ? REUNIAO_TIPO_LABELS[item.data.tipo]
-                      : ROTEIRO_FORMAT_LABELS[item.data.format]}
-                  </span>
-                  <span className="text-xs">
-                    {STATUS_TIER_EMOJI[scoreToTier(item.data.status, item.data.score)]}
-                  </span>
-                  <span className="text-xs text-muted-foreground/60 ml-auto">
-                    {formatDate(item.data.createdAt)}
-                  </span>
-                </div>
-                <p className="text-sm text-muted-foreground truncate mt-0.5">
-                  Nota {item.data.score}/100
-                  {item.data.issues.length > 0
-                    ? ` · ${item.data.issues[0].message}`
-                    : " · nenhum problema identificado."}
-                </p>
-              </div>
-            </button>
-          ))}
-          {feedFiltrado.length === 0 && (
-            <p className="text-center text-muted-foreground py-8 text-sm">
-              Nenhuma validação registrada ainda.
-            </p>
+          {/* Distribuição de status */}
+          {stats.donut.aprovados + stats.donut.ajustar > 0 && (
+            <StatusDonut aprovados={stats.donut.aprovados} ajustar={stats.donut.ajustar} />
           )}
-        </div>
-      </div>
+
+          {/* Cards de alerta */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <AlertCard
+              icon={<ClipboardCheck className="h-4 w-4" />}
+              title="Roteiros para ajustar"
+              count={roteirosParaAjustar.length}
+              items={roteirosParaAjustar.map((r) => ({
+                key: r.id,
+                label: r.clientName,
+                detail: `${ROTEIRO_FORMAT_LABELS[r.format]} · nota ${r.score}/100`,
+              }))}
+            />
+            <AlertCard
+              icon={<Users2 className="h-4 w-4" />}
+              title="Reuniões para ajustar"
+              count={reunioesParaAjustar.length}
+              items={reunioesParaAjustar.map((r) => ({
+                key: r.id,
+                label: r.clientName,
+                detail: `${REUNIAO_TIPO_LABELS[r.tipo]} · nota ${r.score}/100`,
+              }))}
+            />
+          </div>
+
+          {/* Pauta sugerida para as próximas reuniões */}
+          {clientesFiltrados.some((c) => c.proximaPauta.length > 0) && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider font-heading">
+                Pauta para as próximas reuniões
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {clientesFiltrados
+                  .filter((c) => c.proximaPauta.length > 0)
+                  .map((c) => (
+                    <div
+                      key={c.cliente}
+                      className="rounded-xl border border-border bg-card/40 p-4 space-y-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <ListChecks className="h-4 w-4 text-primary shrink-0" />
+                        <span className="text-sm font-medium">{c.cliente}</span>
+                      </div>
+                      <ul className="space-y-1">
+                        {c.proximaPauta.map((item, i) => (
+                          <li key={i} className="text-sm text-muted-foreground">
+                            • {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="clientes" className="mt-4">
+          <div className="rounded-xl border border-border overflow-hidden overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Responsável</TableHead>
+                  <TableHead>Último roteiro</TableHead>
+                  <TableHead>Última reunião</TableHead>
+                  <TableHead>Pendências</TableHead>
+                  <TableHead className="text-center">Ação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {clientesFiltrados.map((c) => (
+                  <TableRow key={c.cliente}>
+                    <TableCell className="font-medium">{c.cliente}</TableCell>
+                    <TableCell className="text-sm">
+                      {c.responsavelName || (
+                        <span className="text-destructive/80">sem responsável</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {c.ultimoRoteiro ? (
+                        <>
+                          {STATUS_TIER_EMOJI[c.ultimoRoteiro.statusTier]}{" "}
+                          {formatDate(c.ultimoRoteiro.data)}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground/50">sem registro</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {c.ultimaReuniao ? (
+                        <>
+                          {STATUS_TIER_EMOJI[c.ultimaReuniao.statusTier]}{" "}
+                          {formatDate(c.ultimaReuniao.data)}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground/50">sem registro</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={c.pendentesAjuste > 0 ? "destructive" : "outline"}>
+                        {c.pendentesAjuste}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Button variant="outline" size="sm" onClick={() => setCliente(c.cliente)}>
+                        Ver perfil
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {clientesFiltrados.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      Nenhum cliente com validações registradas ainda.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="atividade" className="mt-4">
+          <div className="space-y-2">
+            {feedFiltrado.map((item) => (
+              <button
+                key={`${item.type}-${item.data.id}`}
+                onClick={() => setDetalhe(item)}
+                className="w-full text-left flex items-start gap-3 rounded-xl border border-border bg-card/40 hover:bg-card transition-colors p-4"
+              >
+                <div className="flex items-center justify-center h-8 w-8 rounded-lg shrink-0 bg-primary/15 text-primary">
+                  {item.type === "reuniao" ? (
+                    <Users2 className="h-4 w-4" />
+                  ) : (
+                    <ClipboardCheck className="h-4 w-4" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium">{item.data.clientName}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {item.type === "reuniao"
+                        ? REUNIAO_TIPO_LABELS[item.data.tipo]
+                        : ROTEIRO_FORMAT_LABELS[item.data.format]}
+                    </span>
+                    <span className="text-xs">
+                      {STATUS_TIER_EMOJI[scoreToTier(item.data.status, item.data.score)]}
+                    </span>
+                    <span className="text-xs text-muted-foreground/60 ml-auto">
+                      {formatDate(item.data.createdAt)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground truncate mt-0.5">
+                    Nota {item.data.score}/100
+                    {item.data.issues.length > 0
+                      ? ` · ${item.data.issues[0].message}`
+                      : " · nenhum problema identificado."}
+                  </p>
+                </div>
+              </button>
+            ))}
+            {feedFiltrado.length === 0 && (
+              <p className="text-center text-muted-foreground py-8 text-sm">
+                Nenhuma validação registrada ainda.
+              </p>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Dialog de detalhe */}
       <Dialog open={!!detalhe} onOpenChange={(open) => !open && setDetalhe(null)}>
