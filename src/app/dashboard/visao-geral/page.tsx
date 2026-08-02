@@ -27,16 +27,17 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  AlertTriangle,
-  ShieldAlert,
-  XCircle,
-  Users2,
   ClipboardCheck,
+  Users2,
   Loader2,
   Sparkles,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  ListChecks,
 } from "lucide-react";
-import { STATUS_TIER_EMOJI } from "@/lib/status-tier";
-import { FeedItem, ReuniaoValidacaoRow, ConteudoValidacaoRow } from "@/types";
+import { STATUS_TIER_EMOJI, scoreToTier } from "@/lib/status-tier";
+import { FeedItem, Roteiro, Reuniao, ROTEIRO_FORMAT_LABELS, REUNIAO_TIPO_LABELS } from "@/types";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", {
@@ -57,14 +58,11 @@ export default function VisaoGeralPage() {
     fetchOverview();
   }, [fetchOverview]);
 
-  const filtro = <T extends { cliente: string }>(items: T[]) =>
-    cliente === "todos" ? items : items.filter((i) => i.cliente === cliente);
-
   const feedFiltrado = useMemo(() => {
     if (!overview) return [];
     return cliente === "todos"
       ? overview.feed
-      : overview.feed.filter((f) => f.data.cliente === cliente);
+      : overview.feed.filter((f) => f.data.clientName === cliente);
   }, [overview, cliente]);
 
   const clientesFiltrados = useMemo(() => {
@@ -72,6 +70,20 @@ export default function VisaoGeralPage() {
     return cliente === "todos"
       ? overview.clientes
       : overview.clientes.filter((c) => c.cliente === cliente);
+  }, [overview, cliente]);
+
+  const roteirosParaAjustar = useMemo(() => {
+    if (!overview) return [];
+    return cliente === "todos"
+      ? overview.alerts.roteirosParaAjustar
+      : overview.alerts.roteirosParaAjustar.filter((r) => r.clientName === cliente);
+  }, [overview, cliente]);
+
+  const reunioesParaAjustar = useMemo(() => {
+    if (!overview) return [];
+    return cliente === "todos"
+      ? overview.alerts.reunioesParaAjustar
+      : overview.alerts.reunioesParaAjustar.filter((r) => r.clientName === cliente);
   }, [overview, cliente]);
 
   if (loading && !overview) {
@@ -92,10 +104,6 @@ export default function VisaoGeralPage() {
   }
 
   if (!overview) return null;
-
-  const reunioesIncompletas = filtro(overview.alerts.reunioesIncompletas);
-  const riscosAbertos = filtro(overview.alerts.riscosAbertos);
-  const conteudoReprovado = filtro(overview.alerts.conteudoReprovado);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -126,35 +134,25 @@ export default function VisaoGeralPage() {
       </div>
 
       {/* Cards de alerta */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <AlertCard
-          icon={<AlertTriangle className="h-4 w-4" />}
-          title="Reuniões incompletas"
-          count={reunioesIncompletas.length}
-          items={reunioesIncompletas.map((r) => ({
+          icon={<ClipboardCheck className="h-4 w-4" />}
+          title="Roteiros para ajustar"
+          count={roteirosParaAjustar.length}
+          items={roteirosParaAjustar.map((r) => ({
             key: r.id,
-            label: r.cliente,
-            detail: formatDate(r.createdAt),
+            label: r.clientName,
+            detail: `${ROTEIRO_FORMAT_LABELS[r.format]} · nota ${r.score}/100`,
           }))}
         />
         <AlertCard
-          icon={<ShieldAlert className="h-4 w-4" />}
-          title="Riscos em aberto"
-          count={riscosAbertos.length}
-          items={riscosAbertos.map((r, i) => ({
-            key: `${r.cliente}-${i}`,
-            label: r.cliente,
-            detail: r.descricao,
-          }))}
-        />
-        <AlertCard
-          icon={<XCircle className="h-4 w-4" />}
-          title="Conteúdo reprovado"
-          count={conteudoReprovado.length}
-          items={conteudoReprovado.map((c) => ({
-            key: c.id,
-            label: c.cliente,
-            detail: c.pecaNome || c.tipo,
+          icon={<Users2 className="h-4 w-4" />}
+          title="Reuniões para ajustar"
+          count={reunioesParaAjustar.length}
+          items={reunioesParaAjustar.map((r) => ({
+            key: r.id,
+            label: r.clientName,
+            detail: `${REUNIAO_TIPO_LABELS[r.tipo]} · nota ${r.score}/100`,
           }))}
         />
       </div>
@@ -169,9 +167,9 @@ export default function VisaoGeralPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Cliente</TableHead>
+                <TableHead>Último roteiro</TableHead>
                 <TableHead>Última reunião</TableHead>
-                <TableHead>Última entrega</TableHead>
-                <TableHead>Riscos</TableHead>
+                <TableHead>Pendências</TableHead>
                 <TableHead className="text-center">Ação</TableHead>
               </TableRow>
             </TableHeader>
@@ -179,6 +177,15 @@ export default function VisaoGeralPage() {
               {clientesFiltrados.map((c) => (
                 <TableRow key={c.cliente}>
                   <TableCell className="font-medium">{c.cliente}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {c.ultimoRoteiro ? (
+                      <>
+                        {STATUS_TIER_EMOJI[c.ultimoRoteiro.statusTier]} {formatDate(c.ultimoRoteiro.data)}
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground/50">sem registro</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {c.ultimaReuniao ? (
                       <>
@@ -188,18 +195,9 @@ export default function VisaoGeralPage() {
                       <span className="text-muted-foreground/50">sem registro</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {c.ultimoConteudo ? (
-                      <>
-                        {STATUS_TIER_EMOJI[c.ultimoConteudo.statusTier]} {formatDate(c.ultimoConteudo.data)}
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground/50">sem registro</span>
-                    )}
-                  </TableCell>
                   <TableCell>
-                    <Badge variant={c.riscosAbertos > 0 ? "destructive" : "outline"}>
-                      {c.riscosAbertos}
+                    <Badge variant={c.pendentesAjuste > 0 ? "destructive" : "outline"}>
+                      {c.pendentesAjuste}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center">
@@ -242,19 +240,24 @@ export default function VisaoGeralPage() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium">{item.data.cliente}</span>
+                  <span className="text-sm font-medium">{item.data.clientName}</span>
                   <span className="text-xs text-muted-foreground">
-                    {item.type === "reuniao" ? "Reunião" : "Conteúdo"}
+                    {item.type === "reuniao"
+                      ? REUNIAO_TIPO_LABELS[item.data.tipo]
+                      : ROTEIRO_FORMAT_LABELS[item.data.format]}
                   </span>
-                  <span className="text-xs">{STATUS_TIER_EMOJI[item.data.statusTier]}</span>
+                  <span className="text-xs">
+                    {STATUS_TIER_EMOJI[scoreToTier(item.data.status, item.data.score)]}
+                  </span>
                   <span className="text-xs text-muted-foreground/60 ml-auto">
                     {formatDate(item.data.createdAt)}
                   </span>
                 </div>
                 <p className="text-sm text-muted-foreground truncate mt-0.5">
-                  {item.type === "reuniao"
-                    ? item.data.resumo || "Sem resumo."
-                    : item.data.feedback || item.data.pecaNome || "Sem feedback."}
+                  Nota {item.data.score}/100
+                  {item.data.issues.length > 0
+                    ? ` · ${item.data.issues[0].message}`
+                    : " · nenhum problema identificado."}
                 </p>
               </div>
             </button>
@@ -270,12 +273,8 @@ export default function VisaoGeralPage() {
       {/* Dialog de detalhe */}
       <Dialog open={!!detalhe} onOpenChange={(open) => !open && setDetalhe(null)}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          {detalhe && detalhe.type === "reuniao" && (
-            <ReuniaoDetalhe reuniao={detalhe.data} />
-          )}
-          {detalhe && detalhe.type === "conteudo" && (
-            <ConteudoDetalhe conteudo={detalhe.data} />
-          )}
+          {detalhe && detalhe.type === "roteiro" && <RoteiroDetalhe roteiro={detalhe.data} />}
+          {detalhe && detalhe.type === "reuniao" && <ReuniaoDetalhe reuniao={detalhe.data} />}
         </DialogContent>
       </Dialog>
     </div>
@@ -333,106 +332,104 @@ function AlertCard({
   );
 }
 
-function ReuniaoDetalhe({ reuniao }: { reuniao: ReuniaoValidacaoRow }) {
+function IssuesList({ issues }: { issues: Roteiro["issues"] }) {
+  const errors = issues.filter((i) => i.severity === "erro");
+  const warnings = issues.filter((i) => i.severity === "alerta");
+
+  if (issues.length === 0) {
+    return <p className="text-sm text-muted-foreground">Nenhum problema identificado.</p>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {[...errors, ...warnings].map((issue, i) => (
+        <li key={i} className="flex items-start gap-2 text-sm">
+          {issue.severity === "erro" ? (
+            <XCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+          ) : (
+            <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+          )}
+          <span>{issue.message}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function RoteiroDetalhe({ roteiro }: { roteiro: Roteiro }) {
   return (
     <>
       <DialogHeader>
-        <DialogTitle className="font-heading">
-          {reuniao.cliente} {STATUS_TIER_EMOJI[reuniao.statusTier]}
+        <DialogTitle className="font-heading flex items-center gap-2">
+          {roteiro.clientName}
+          {roteiro.status === "aprovado" ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          ) : (
+            <XCircle className="h-4 w-4 text-destructive" />
+          )}
         </DialogTitle>
         <DialogDescription>
-          {reuniao.arquivoNome || "Reunião"} · {formatDate(reuniao.createdAt)} · status: {reuniao.status}
+          {ROTEIRO_FORMAT_LABELS[roteiro.format]}
+          {roteiro.title ? ` · ${roteiro.title}` : ""} · enviado por {roteiro.authorName} em{" "}
+          {formatDate(roteiro.createdAt)}
         </DialogDescription>
       </DialogHeader>
-      <div className="space-y-4 text-sm">
-        {reuniao.resumo && (
-          <div>
-            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Resumo</p>
-            <p>{reuniao.resumo}</p>
-          </div>
-        )}
-        {reuniao.compromissos.length > 0 && (
-          <div>
-            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Compromissos</p>
-            <ul className="space-y-1">
-              {reuniao.compromissos.map((c, i) => (
-                <li key={i}>
-                  • {c.descricao}
-                  {c.responsavel && <span className="text-muted-foreground"> ({c.responsavel})</span>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {reuniao.riscos.length > 0 && (
-          <div>
-            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Riscos</p>
-            <ul className="space-y-1">
-              {reuniao.riscos.map((r, i) => (
-                <li key={i}>
-                  • {r.descricao}
-                  {r.responsavel ? (
-                    <span className="text-muted-foreground"> ({r.responsavel})</span>
-                  ) : (
-                    <span className="text-destructive/80"> — sem responsável</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {reuniao.pautaProxima && (
-          <div>
-            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">
-              Pauta sugerida para a próxima
-            </p>
-            <p>{reuniao.pautaProxima}</p>
-          </div>
-        )}
-        {reuniao.recapMensagem && (
-          <div>
-            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">
-              Recap (mensagem ao cliente)
-            </p>
-            <p className="whitespace-pre-wrap">{reuniao.recapMensagem}</p>
-          </div>
+      <div className="space-y-3 text-sm">
+        <Badge variant="outline">Nota: {roteiro.score}/100</Badge>
+        <IssuesList issues={roteiro.issues} />
+        {roteiro.reviewNote && (
+          <p className="text-xs text-muted-foreground">
+            Revisado por {roteiro.reviewedByName}
+            {roteiro.reviewedAt ? ` em ${formatDate(roteiro.reviewedAt)}` : ""}: &quot;{roteiro.reviewNote}
+            &quot;
+          </p>
         )}
       </div>
     </>
   );
 }
 
-function ConteudoDetalhe({ conteudo }: { conteudo: ConteudoValidacaoRow }) {
+function ReuniaoDetalhe({ reuniao }: { reuniao: Reuniao }) {
   return (
     <>
       <DialogHeader>
-        <DialogTitle className="font-heading">
-          {conteudo.cliente} {STATUS_TIER_EMOJI[conteudo.statusTier]}
+        <DialogTitle className="font-heading flex items-center gap-2">
+          {reuniao.clientName}
+          {reuniao.status === "aprovado" ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          ) : (
+            <XCircle className="h-4 w-4 text-destructive" />
+          )}
         </DialogTitle>
         <DialogDescription>
-          {conteudo.pecaNome || conteudo.tipo} · {formatDate(conteudo.createdAt)}
+          {REUNIAO_TIPO_LABELS[reuniao.tipo]} · registrada por {reuniao.authorName} em{" "}
+          {formatDate(reuniao.createdAt)}
         </DialogDescription>
       </DialogHeader>
-      <div className="space-y-3 text-sm">
-        <div className="flex gap-4">
-          {conteudo.statusTexto && (
-            <div>
-              <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Texto</p>
-              <p>{conteudo.statusTexto}</p>
+      <div className="space-y-4 text-sm">
+        <Badge variant="outline">Nota: {reuniao.score}/100</Badge>
+        <IssuesList issues={reuniao.issues} />
+        {reuniao.suggestedAgenda.length > 0 && (
+          <div className="rounded-lg border border-border p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <ListChecks className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium text-sm">Sugestão de pauta para a próxima reunião</span>
             </div>
-          )}
-          {conteudo.statusArte && (
-            <div>
-              <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Arte</p>
-              <p>{conteudo.statusArte}</p>
-            </div>
-          )}
-        </div>
-        {conteudo.feedback && (
-          <div>
-            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Feedback</p>
-            <p className="whitespace-pre-wrap">{conteudo.feedback}</p>
+            <ul className="space-y-1.5">
+              {reuniao.suggestedAgenda.map((item, i) => (
+                <li key={i} className="text-sm text-muted-foreground">
+                  • {item}
+                </li>
+              ))}
+            </ul>
           </div>
+        )}
+        {reuniao.reviewNote && (
+          <p className="text-xs text-muted-foreground">
+            Revisado por {reuniao.reviewedByName}
+            {reuniao.reviewedAt ? ` em ${formatDate(reuniao.reviewedAt)}` : ""}: &quot;{reuniao.reviewNote}
+            &quot;
+          </p>
         )}
       </div>
     </>

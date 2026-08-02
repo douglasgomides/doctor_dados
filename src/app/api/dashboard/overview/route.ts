@@ -1,152 +1,118 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
-import { statusToTier } from "@/lib/status-tier";
-import {
-  ClienteOverviewRow,
-  CompromissoItem,
-  ConteudoValidacaoRow,
-  DashboardOverview,
-  FeedItem,
-  ReuniaoValidacaoRow,
-  RiscoAberto,
-  RiscoItem,
-} from "@/types";
+import { scoreToTier } from "@/lib/status-tier";
+import { ClienteOverviewRow, DashboardOverview, FeedItem, Reuniao, Roteiro } from "@/types";
 
 // Autenticação + restrição a "master" impostas pelo middleware (src/proxy.ts)
-// pra todo o prefixo /api/dashboard. Lê das tabelas alimentadas pelo
-// pipeline externo (n8n) — este app só consulta, nunca escreve nelas.
+// pra todo o prefixo /api/dashboard. Lê diretamente das tabelas roteiros e
+// reunioes deste app (validadas por IA em src/lib/roteiro-validator.ts e
+// src/lib/reuniao-validator.ts) — não depende de nenhum pipeline externo.
 
-const FEED_LIMIT = 30;
+const ROW_LIMIT = 500;
 const ALERT_LIMIT = 20;
-
-function normalizeRisco(raw: unknown): RiscoItem {
-  if (typeof raw === "string") return { descricao: raw, responsavel: null };
-  const obj = (raw || {}) as Record<string, unknown>;
-  return {
-    descricao: String(obj.descricao ?? obj.texto ?? ""),
-    responsavel: obj.responsavel ? String(obj.responsavel) : null,
-  };
-}
-
-function normalizeCompromisso(raw: unknown): CompromissoItem {
-  if (typeof raw === "string") return { descricao: raw, responsavel: null, prazo: null };
-  const obj = (raw || {}) as Record<string, unknown>;
-  return {
-    descricao: String(obj.descricao ?? obj.texto ?? ""),
-    responsavel: obj.responsavel ? String(obj.responsavel) : null,
-    prazo: obj.prazo ? String(obj.prazo) : null,
-  };
-}
+const FEED_LIMIT = 30;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapReuniaoRow(row: any): ReuniaoValidacaoRow {
-  const riscosRaw = Array.isArray(row.riscos) ? row.riscos : [];
-  const compromissosRaw = Array.isArray(row.compromissos) ? row.compromissos : [];
+function mapRoteiroRow(row: any): Roteiro {
   return {
     id: row.id,
-    arquivoNome: row.arquivo_nome,
-    cliente: row.cliente,
+    authorId: row.author_id,
+    authorName: row.author_name,
+    clientName: row.client_name,
+    format: row.format,
+    title: row.title,
+    content: row.content,
     status: row.status,
-    statusTier: statusToTier(row.status),
-    resumo: row.resumo,
-    compromissos: compromissosRaw.map(normalizeCompromisso),
-    riscos: riscosRaw.map(normalizeRisco),
-    pautaProxima: row.pauta_proxima,
-    recapMensagem: row.recap_mensagem,
+    score: row.score,
+    issues: row.issues,
+    reviewNote: row.review_note,
+    reviewedByName: row.reviewed_by_name,
+    reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapConteudoRow(row: any): ConteudoValidacaoRow {
-  const tier = statusToTier(
-    [row.status_texto, row.status_arte].filter(Boolean).join(" ") || null
-  );
+function mapReuniaoRow(row: any): Reuniao {
   return {
     id: row.id,
-    pecaNome: row.peca_nome,
-    cliente: row.cliente,
+    authorId: row.author_id,
+    authorName: row.author_name,
+    clientName: row.client_name,
     tipo: row.tipo,
-    statusTexto: row.status_texto,
-    statusArte: row.status_arte,
-    statusTier: tier,
-    feedback: row.feedback,
+    content: row.content,
+    status: row.status,
+    score: row.score,
+    issues: row.issues,
+    suggestedAgenda: row.suggested_agenda,
+    reviewNote: row.review_note,
+    reviewedByName: row.reviewed_by_name,
+    reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
 
 export async function GET() {
   try {
-    const [latestReunioes, latestConteudos, incompletas, reprovados, feedReunioes, feedConteudos] =
-      await Promise.all([
-        pool.query(
-          `SELECT DISTINCT ON (cliente) * FROM reuniao_validacoes ORDER BY cliente, created_at DESC`
-        ),
-        pool.query(
-          `SELECT DISTINCT ON (cliente) * FROM conteudo_validacoes ORDER BY cliente, created_at DESC`
-        ),
-        pool.query(
-          `SELECT * FROM reuniao_validacoes WHERE status ILIKE '%incomplet%' ORDER BY created_at DESC LIMIT $1`,
-          [ALERT_LIMIT]
-        ),
-        pool.query(
-          `SELECT * FROM conteudo_validacoes
-           WHERE status_texto ILIKE '%reprovad%' OR status_arte ILIKE '%reprovad%'
-           ORDER BY created_at DESC LIMIT $1`,
-          [ALERT_LIMIT]
-        ),
-        pool.query(`SELECT * FROM reuniao_validacoes ORDER BY created_at DESC LIMIT $1`, [
-          FEED_LIMIT,
-        ]),
-        pool.query(`SELECT * FROM conteudo_validacoes ORDER BY created_at DESC LIMIT $1`, [
-          FEED_LIMIT,
-        ]),
-      ]);
+    const [roteirosResult, reunioesResult] = await Promise.all([
+      pool.query(`SELECT * FROM roteiros ORDER BY created_at DESC LIMIT $1`, [ROW_LIMIT]),
+      pool.query(`SELECT * FROM reunioes ORDER BY created_at DESC LIMIT $1`, [ROW_LIMIT]),
+    ]);
 
-    const latestReuniaoByCliente = new Map(
-      latestReunioes.rows.map((r) => [r.cliente, mapReuniaoRow(r)])
-    );
-    const latestConteudoByCliente = new Map(
-      latestConteudos.rows.map((r) => [r.cliente, mapConteudoRow(r)])
-    );
+    const roteiros = roteirosResult.rows.map(mapRoteiroRow);
+    const reunioes = reunioesResult.rows.map(mapReuniaoRow);
+
+    // Ambas as listas já vêm ordenadas por created_at DESC, então o primeiro
+    // roteiro/reunião visto por cliente é o mais recente.
+    const latestRoteiroByCliente = new Map<string, Roteiro>();
+    for (const r of roteiros) {
+      if (!latestRoteiroByCliente.has(r.clientName)) latestRoteiroByCliente.set(r.clientName, r);
+    }
+    const latestReuniaoByCliente = new Map<string, Reuniao>();
+    for (const r of reunioes) {
+      if (!latestReuniaoByCliente.has(r.clientName)) latestReuniaoByCliente.set(r.clientName, r);
+    }
+
+    const pendentesPorCliente = new Map<string, number>();
+    for (const r of [...roteiros, ...reunioes]) {
+      if (r.status === "ajustar") {
+        pendentesPorCliente.set(r.clientName, (pendentesPorCliente.get(r.clientName) || 0) + 1);
+      }
+    }
 
     const clienteNames = new Set<string>([
+      ...latestRoteiroByCliente.keys(),
       ...latestReuniaoByCliente.keys(),
-      ...latestConteudoByCliente.keys(),
     ]);
 
     const clientes: ClienteOverviewRow[] = [...clienteNames].sort().map((cliente) => {
+      const roteiro = latestRoteiroByCliente.get(cliente) || null;
       const reuniao = latestReuniaoByCliente.get(cliente) || null;
-      const conteudo = latestConteudoByCliente.get(cliente) || null;
-      const riscosAbertos = reuniao
-        ? reuniao.riscos.filter((r) => !r.responsavel).length
-        : 0;
       return {
         cliente,
-        ultimaReuniao: reuniao
-          ? { data: reuniao.createdAt, status: reuniao.status, statusTier: reuniao.statusTier }
-          : null,
-        ultimoConteudo: conteudo
+        ultimoRoteiro: roteiro
           ? {
-              data: conteudo.createdAt,
-              status: conteudo.statusTexto || conteudo.statusArte || "",
-              statusTier: conteudo.statusTier,
+              data: roteiro.createdAt,
+              status: roteiro.status,
+              statusTier: scoreToTier(roteiro.status, roteiro.score),
+              score: roteiro.score,
             }
           : null,
-        riscosAbertos,
+        ultimaReuniao: reuniao
+          ? {
+              data: reuniao.createdAt,
+              status: reuniao.status,
+              statusTier: scoreToTier(reuniao.status, reuniao.score),
+              score: reuniao.score,
+            }
+          : null,
+        pendentesAjuste: pendentesPorCliente.get(cliente) || 0,
       };
     });
 
-    const riscosAbertos: RiscoAberto[] = [...latestReuniaoByCliente.entries()].flatMap(
-      ([cliente, reuniao]) =>
-        reuniao.riscos
-          .filter((r) => !r.responsavel && r.descricao)
-          .map((r) => ({ cliente, descricao: r.descricao, createdAt: reuniao.createdAt }))
-    );
-
     const feed: FeedItem[] = [
-      ...feedReunioes.rows.map((r) => ({ type: "reuniao" as const, data: mapReuniaoRow(r) })),
-      ...feedConteudos.rows.map((r) => ({ type: "conteudo" as const, data: mapConteudoRow(r) })),
+      ...roteiros.map((r) => ({ type: "roteiro" as const, data: r })),
+      ...reunioes.map((r) => ({ type: "reuniao" as const, data: r })),
     ]
       .sort((a, b) => (a.data.createdAt < b.data.createdAt ? 1 : -1))
       .slice(0, FEED_LIMIT);
@@ -154,9 +120,8 @@ export async function GET() {
     const overview: DashboardOverview = {
       clientes,
       alerts: {
-        reunioesIncompletas: incompletas.rows.map(mapReuniaoRow),
-        riscosAbertos,
-        conteudoReprovado: reprovados.rows.map(mapConteudoRow),
+        roteirosParaAjustar: roteiros.filter((r) => r.status === "ajustar").slice(0, ALERT_LIMIT),
+        reunioesParaAjustar: reunioes.filter((r) => r.status === "ajustar").slice(0, ALERT_LIMIT),
       },
       feed,
     };

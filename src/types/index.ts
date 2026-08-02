@@ -106,73 +106,28 @@ export interface Reuniao {
 }
 
 // ============================================
-// VISÃO GERAL — lê o pipeline externo de validação
-// (tabelas reuniao_validacoes / conteudo_validacoes)
+// VISÃO GERAL — agrega os próprios roteiros e reuniões
+// validados por IA neste app (nenhuma dependência externa)
 // ============================================
 
-// Tier visual simplificado (✅ / ⚠️ / ❌), derivado do texto livre de
-// `status` que o pipeline externo grava — não é um enum fechado no banco.
+// Tier visual simplificado (✅ / ⚠️ / ❌) derivado do status + nota da IA.
 export type StatusTier = "ok" | "atencao" | "critico";
-
-export interface RiscoItem {
-  descricao: string;
-  responsavel: string | null;
-}
-
-export interface CompromissoItem {
-  descricao: string;
-  responsavel: string | null;
-  prazo: string | null;
-}
-
-export interface ReuniaoValidacaoRow {
-  id: string;
-  arquivoNome: string | null;
-  cliente: string;
-  status: string;
-  statusTier: StatusTier;
-  resumo: string | null;
-  compromissos: CompromissoItem[];
-  riscos: RiscoItem[];
-  pautaProxima: string | null;
-  recapMensagem: string | null;
-  createdAt: string;
-}
-
-export interface ConteudoValidacaoRow {
-  id: string;
-  pecaNome: string | null;
-  cliente: string;
-  tipo: string;
-  statusTexto: string | null;
-  statusArte: string | null;
-  statusTier: StatusTier;
-  feedback: string | null;
-  createdAt: string;
-}
 
 export interface ClienteOverviewRow {
   cliente: string;
-  ultimaReuniao: { data: string; status: string; statusTier: StatusTier } | null;
-  ultimoConteudo: { data: string; status: string; statusTier: StatusTier } | null;
-  riscosAbertos: number;
-}
-
-export interface RiscoAberto {
-  cliente: string;
-  descricao: string;
-  createdAt: string;
+  ultimoRoteiro: { data: string; status: RoteiroStatus; statusTier: StatusTier; score: number } | null;
+  ultimaReuniao: { data: string; status: ReuniaoStatus; statusTier: StatusTier; score: number } | null;
+  pendentesAjuste: number;
 }
 
 export interface DashboardAlerts {
-  reunioesIncompletas: ReuniaoValidacaoRow[];
-  riscosAbertos: RiscoAberto[];
-  conteudoReprovado: ConteudoValidacaoRow[];
+  roteirosParaAjustar: Roteiro[];
+  reunioesParaAjustar: Reuniao[];
 }
 
 export type FeedItem =
-  | { type: "reuniao"; data: ReuniaoValidacaoRow }
-  | { type: "conteudo"; data: ConteudoValidacaoRow };
+  | { type: "roteiro"; data: Roteiro }
+  | { type: "reuniao"; data: Reuniao };
 
 export interface DashboardOverview {
   clientes: ClienteOverviewRow[];

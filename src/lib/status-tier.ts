@@ -1,18 +1,11 @@
 import { StatusTier } from "@/types";
 
-// O pipeline externo grava `status` como texto livre (ex: "ok", "incompleto",
-// "completo", "reprovado"), não um enum fixo no banco. Mapeamos por
-// palavra-chave para o tier visual (✅/⚠️/❌) em vez de comparar string exata,
-// pra não quebrar se o pipeline usar uma variação do termo.
-const CRITICO_HINTS = ["reprovad", "critic", "erro", "falh"];
-const ATENCAO_HINTS = ["incomplet", "ajust", "atenc", "alerta", "pendente", "revis"];
-
-export function statusToTier(status: string | null | undefined): StatusTier {
-  const normalized = (status || "").toLowerCase();
-  if (CRITICO_HINTS.some((hint) => normalized.includes(hint))) return "critico";
-  if (ATENCAO_HINTS.some((hint) => normalized.includes(hint))) return "atencao";
-  if (!normalized) return "atencao";
-  return "ok";
+// Deriva o tier visual (✅/⚠️/❌) do status + nota da IA. "Aprovado" é
+// sempre ok; "ajustar" vira crítico quando a nota está muito baixa (poucos
+// pontos ganhos, provavelmente erro bloqueante) e atenção nos demais casos.
+export function scoreToTier(status: "aprovado" | "ajustar", score: number): StatusTier {
+  if (status === "aprovado") return "ok";
+  return score < 50 ? "critico" : "atencao";
 }
 
 export const STATUS_TIER_EMOJI: Record<StatusTier, string> = {
