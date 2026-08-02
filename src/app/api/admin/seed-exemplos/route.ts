@@ -6,6 +6,12 @@ import { validateReuniao } from "@/lib/reuniao-validator";
 import { validateComercial } from "@/lib/comercial-validator";
 import { findOrCreateClienteId } from "@/lib/clientes";
 
+// Gera 5 análises de IA numa única chamada — em série isso passa fácil do
+// limite padrão de função serverless da Vercel, por isso: roda tudo em
+// paralelo (Promise.all mais abaixo) e estende explicitamente o tempo
+// máximo da função.
+export const maxDuration = 60;
+
 // Popula/limpa dados de exemplo em todas as telas (Roteiros, Reuniões,
 // Comercial, Performance, Visão Geral, Clientes), pra dar pra equipe uma
 // demonstração real de como a ferramenta entrega antes de ter volume de
@@ -91,15 +97,13 @@ export async function POST() {
       [author.id, clientId]
     );
 
-    const [roteiroBom, roteiroAjustar] = await Promise.all([
+    const [roteiroBom, roteiroAjustar, reuniaoBoa, reuniaoAjustar, comercial] = await Promise.all([
       validateRoteiro("reel", ROTEIRO_REEL_BOM),
       validateRoteiro("carrossel", ROTEIRO_CARROSSEL_AJUSTAR),
-    ]);
-    const [reuniaoBoa, reuniaoAjustar] = await Promise.all([
       validateReuniao("mentoria", REUNIAO_MENTORIA_BOA),
       validateReuniao("mentoria", REUNIAO_MENTORIA_AJUSTAR),
+      validateComercial(COMERCIAL_CONTEUDO),
     ]);
-    const comercial = await validateComercial(COMERCIAL_CONTEUDO);
 
     await pool.query(
       `INSERT INTO roteiros (author_id, author_name, client_id, client_name, format, title, content, status, score, issues)
