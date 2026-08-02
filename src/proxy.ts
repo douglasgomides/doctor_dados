@@ -6,7 +6,13 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 const PROTECTED_PAGE_PREFIX = "/dashboard";
 
 // Rotas de API restritas ao papel "master".
-const MASTER_ONLY_API_PREFIXES = ["/api/users", "/api/dashboard", "/api/clientes", "/api/comercial"];
+const MASTER_ONLY_API_PREFIXES = [
+  "/api/users",
+  "/api/dashboard",
+  "/api/clientes",
+  "/api/comercial",
+  "/api/admin",
+];
 
 // Rotas de API que exigem sessão válida, de qualquer papel.
 const AUTH_REQUIRED_API_PREFIXES = ["/api/roteiros", "/api/reunioes", "/api/carousel"];
@@ -66,5 +72,6 @@ export const config = {
     "/api/clientes/:path*",
     "/api/carousel/:path*",
     "/api/comercial/:path*",
+    "/api/admin/:path*",
   ],
 };
