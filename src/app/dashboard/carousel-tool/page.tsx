@@ -12,12 +12,37 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 
-function fileToBase64(file: File): Promise<string> {
+// A Vercel recusa requisições acima de ~4.5MB ("Request Entity Too Large",
+// que nem chega a ser JSON — o corpo do erro é texto puro do próprio
+// Vercel). Fotos de celular/IA frequentemente passam disso, então toda
+// imagem é redimensionada e recomprimida no navegador antes de sair daqui.
+async function resizeImageToBlob(file: File, maxDimension = 1600, quality = 0.85): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale);
+  const h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas 2D não disponível neste navegador.");
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("Falha ao comprimir imagem."))),
+      "image/jpeg",
+      quality
+    );
+  });
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve((reader.result as string).split(",")[1]);
     reader.onerror = reject;
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(blob);
   });
 }
 
@@ -59,7 +84,10 @@ export default function CarouselToolPage() {
     setError(null);
     try {
       const form = new FormData();
-      for (const file of referenceFiles) form.append("image", file);
+      for (const [i, file] of referenceFiles.entries()) {
+        const resized = await resizeImageToBlob(file);
+        form.append("image", resized, `ref-${i}.jpg`);
+      }
       const res = await fetch("/api/carousel/extract", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Falha ao extrair modelo(s).");
@@ -83,8 +111,8 @@ export default function CarouselToolPage() {
         name: brandName,
         handle: brandHandle,
         primary: brandPrimary,
-        avatarPhotoBase64: avatarFile ? await fileToBase64(avatarFile) : undefined,
-        mainPhotoBase64: mainPhotoFile ? await fileToBase64(mainPhotoFile) : undefined,
+        avatarPhotoBase64: avatarFile ? await blobToBase64(await resizeImageToBlob(avatarFile, 600)) : undefined,
+        mainPhotoBase64: mainPhotoFile ? await blobToBase64(await resizeImageToBlob(mainPhotoFile, 1600)) : undefined,
       };
 
       const res = await fetch("/api/carousel/render", {
@@ -109,7 +137,9 @@ export default function CarouselToolPage() {
         <p className="text-sm text-muted-foreground">
           Sobe o(s) modelo(s) de referência (uma imagem por lâmina, se o carrossel original tiver layouts
           diferentes por posição — capa, conteúdo, CTA), extrai a estrutura de cada um, e gera de novo com
-          marca/conteúdo diferentes. Sem tela bonita ainda — é só pra validar o motor.
+          marca/conteúdo diferentes. Sem tela bonita ainda — é só pra validar o motor. Todas as fotos são
+          redimensionadas/comprimidas automaticamente no navegador antes de enviar (evita erro de upload
+          grande demais).
         </p>
       </div>
 
