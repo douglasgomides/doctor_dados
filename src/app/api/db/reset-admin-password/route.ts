@@ -2,33 +2,35 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
 
-// Reset de emergência pra senha de um usuário master (tipicamente
-// admin@dashboard.com), pra quando a senha original foi perdida e ninguém
-// mais consegue logar como master pra trocar pela tela de Usuários. Segue o
-// mesmo padrão de segurança de /api/db/init: fora do prefixo autenticado por
-// sessão (é chamado de fora do navegador logado), protegido pelo mesmo
-// segredo de setup (DB_INIT_SECRET, header "x-init-secret") que só quem
-// configurou o projeto na Vercel possui.
+// Recuperação de emergência: cria (se o e-mail não existir) ou reseta a
+// senha (se existir) de um usuário master. Pensado pra quando ninguém mais
+// consegue logar e também não se tem acesso ao painel da Vercel pra
+// conferir o DB_INIT_SECRET — por isso aceita DOIS segredos possíveis:
+//
+// 1. DB_INIT_SECRET (variável de ambiente, o "correto" a longo prazo).
+// 2. EMERGENCY_RECOVERY_CODE abaixo — fixo no código, gerado uma única vez
+//    pra destravar o acesso sem depender de nada externo. É um mecanismo de
+//    "quebra o vidro": funciona, mas fica visível a quem tiver acesso a
+//    este repositório. Assim que o acesso normal for recuperado, troque
+//    esse valor (ou apague este bloco) e prefira o fluxo por
+//    DB_INIT_SECRET / tela de Usuários daqui pra frente.
+const EMERGENCY_RECOVERY_CODE = "YECniw3xEGbN6kmUhN6ySusS";
 
 export async function POST(req: NextRequest) {
   try {
-    const initSecret = process.env.DB_INIT_SECRET;
-    if (!initSecret) {
-      return NextResponse.json(
-        { error: "DB_INIT_SECRET não configurado no servidor." },
-        { status: 500 }
-      );
-    }
-
     const providedSecret = req.headers.get("x-init-secret");
-    if (!providedSecret || providedSecret !== initSecret) {
+    const validSecret =
+      !!providedSecret &&
+      (providedSecret === process.env.DB_INIT_SECRET || providedSecret === EMERGENCY_RECOVERY_CODE);
+
+    if (!validSecret) {
       return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
     }
 
-    const { email, newPassword } = await req.json();
+    const { email, name, newPassword } = await req.json();
 
-    if (!email || typeof email !== "string") {
-      return NextResponse.json({ error: "Informe o e-mail do usuário." }, { status: 400 });
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      return NextResponse.json({ error: "Informe um e-mail válido." }, { status: 400 });
     }
     if (!newPassword || typeof newPassword !== "string" || newPassword.length < 8) {
       return NextResponse.json(
@@ -37,19 +39,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
     const hashed = await bcrypt.hash(newPassword, 10);
-    const result = await pool.query(
-      `UPDATE dash_users SET password = $1, updated_at = NOW() WHERE email = $2 RETURNING id, email, name, role`,
-      [hashed, email.trim().toLowerCase()]
-    );
 
-    if (result.rows.length === 0) {
-      return NextResponse.json({ error: "Nenhum usuário encontrado com esse e-mail." }, { status: 404 });
+    const existing = await pool.query("SELECT id FROM dash_users WHERE email = $1", [
+      normalizedEmail,
+    ]);
+
+    if (existing.rows.length > 0) {
+      const result = await pool.query(
+        `UPDATE dash_users SET password = $1, updated_at = NOW() WHERE email = $2 RETURNING id, email, name, role`,
+        [hashed, normalizedEmail]
+      );
+      return NextResponse.json({ success: true, action: "atualizado", user: result.rows[0] });
     }
 
-    return NextResponse.json({ success: true, user: result.rows[0] });
+    const result = await pool.query(
+      `INSERT INTO dash_users (email, name, password, role)
+       VALUES ($1, $2, $3, 'master')
+       RETURNING id, email, name, role`,
+      [normalizedEmail, (typeof name === "string" && name.trim()) || normalizedEmail.split("@")[0], hashed]
+    );
+    return NextResponse.json({ success: true, action: "criado", user: result.rows[0] });
   } catch (error) {
-    console.error("Erro ao resetar senha:", error);
-    return NextResponse.json({ error: "Erro ao resetar senha." }, { status: 500 });
+    console.error("Erro ao recuperar acesso:", error);
+    return NextResponse.json({ error: "Erro ao recuperar acesso." }, { status: 500 });
   }
 }

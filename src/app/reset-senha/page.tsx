@@ -7,15 +7,15 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Eye, EyeOff } from "lucide-react";
 
-// Página de recuperação de emergência pra quando ninguém mais consegue
-// logar como master pra trocar a senha pela tela de Usuários. Fica fora do
-// /dashboard (não exige sessão), mas a ação em si continua exigindo o
-// DB_INIT_SECRET — a mesma proteção que já existia pra /api/db/init — então
-// só quem tem acesso às variáveis de ambiente do projeto na Vercel consegue
-// de fato resetar uma senha por aqui.
+// Página de recuperação de emergência: se o e-mail já existir, troca a
+// senha; se não existir, cria um usuário master novo. Fica fora do
+// /dashboard (não exige sessão), mas a ação em si continua exigindo um
+// segredo — DB_INIT_SECRET (Vercel) ou o código de recuperação fixo no
+// código (ver comentário em /api/db/reset-admin-password).
 
 export default function ResetSenhaPage() {
   const [email, setEmail] = useState("admin@dashboard.com");
+  const [name, setName] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [secret, setSecret] = useState("");
   const [showSecret, setShowSecret] = useState(false);
@@ -31,13 +31,16 @@ export default function ResetSenhaPage() {
       const res = await fetch("/api/db/reset-admin-password", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-init-secret": secret },
-        body: JSON.stringify({ email, newPassword }),
+        body: JSON.stringify({ email, name, newPassword }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erro ao resetar senha.");
+      if (!res.ok) throw new Error(data.error || "Erro ao processar.");
       setFeedback({
         type: "sucesso",
-        texto: `Senha atualizada para ${data.user.email}. Já pode fazer login com a nova senha.`,
+        texto:
+          data.action === "criado"
+            ? `Usuário master ${data.user.email} criado. Já pode fazer login com a senha definida.`
+            : `Senha atualizada para ${data.user.email}. Já pode fazer login com a nova senha.`,
       });
     } catch (error) {
       setFeedback({ type: "erro", texto: error instanceof Error ? error.message : "Erro inesperado." });
@@ -56,26 +59,26 @@ export default function ResetSenhaPage() {
             <span className="text-black font-bold text-xl tracking-tight font-heading">DC</span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground font-heading">
-            Resetar senha
+            Recuperar acesso
           </h1>
           <p className="text-sm text-primary/80 text-center">
-            Recuperação de emergência — exige o segredo de setup do projeto
+            Recupera a senha de um usuário existente ou cadastra um novo master
           </p>
         </div>
 
         <Card className="border-primary/20 bg-card/90 backdrop-blur-sm shadow-[0_0_60px_-20px_rgba(208,164,101,0.35)]">
           <CardHeader className="space-y-1 pb-4">
-            <CardTitle className="text-xl text-foreground font-heading">Nova senha</CardTitle>
+            <CardTitle className="text-xl text-foreground font-heading">Recuperar ou cadastrar</CardTitle>
             <CardDescription className="text-muted-foreground">
-              Precisa do valor de <code className="text-xs">DB_INIT_SECRET</code> (Vercel → Settings →
-              Environment Variables) pra confirmar.
+              Se o e-mail já existir, a senha é trocada. Se não existir, cria um usuário master novo
+              com essa senha.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-foreground/80">
-                  E-mail do usuário
+                  E-mail
                 </Label>
                 <Input
                   id="email"
@@ -84,6 +87,13 @@ export default function ResetSenhaPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="name" className="text-foreground/80">
+                  Nome (só usado se for criar um usuário novo)
+                </Label>
+                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
               </div>
 
               <div className="space-y-2">
@@ -113,7 +123,7 @@ export default function ResetSenhaPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="secret" className="text-foreground/80">
-                  DB_INIT_SECRET
+                  Código de recuperação
                 </Label>
                 <div className="relative">
                   <Input
@@ -148,7 +158,7 @@ export default function ResetSenhaPage() {
               )}
 
               <Button type="submit" className="w-full font-semibold" disabled={loading}>
-                {loading ? "Resetando..." : "Resetar senha"}
+                {loading ? "Processando..." : "Recuperar / cadastrar"}
               </Button>
             </form>
           </CardContent>
