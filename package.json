@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "@napi-rs/canvas": "^1.0.3",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -22,6 +24,7 @@
     "react-day-picker": "^9.13.2",
     "react-dom": "19.2.3",
     "recharts": "^3.7.0",
+    "sharp": "^0.35.3",
     "tailwind-merge": "^3.5.0",
     "zustand": "^5.0.11"
   },

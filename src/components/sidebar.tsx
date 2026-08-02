@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -23,6 +24,7 @@ import { useState } from "react";
 const baseNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Campanhas", href: "/dashboard/campaigns", icon: Table2 },
+  { name: "Clonador de Carrossel", href: "/dashboard/carousel-tool", icon: Wand2 },
   { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
 

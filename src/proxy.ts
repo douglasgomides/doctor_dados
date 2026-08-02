@@ -9,7 +9,7 @@ const PROTECTED_PAGE_PREFIX = "/dashboard";
 const MASTER_ONLY_API_PREFIXES = ["/api/users"];
 
 // Rotas de API que exigem sessão válida, de qualquer papel.
-const AUTH_REQUIRED_API_PREFIXES = ["/api/campaigns"];
+const AUTH_REQUIRED_API_PREFIXES = ["/api/campaigns", "/api/carousel"];
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -54,5 +54,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/api/users/:path*", "/api/campaigns/:path*"],
+  matcher: ["/dashboard/:path*", "/api/users/:path*", "/api/campaigns/:path*", "/api/carousel/:path*"],
 };
