@@ -11,7 +11,7 @@ const VALID_ROLES = new Set(["master", "team"]);
 export async function GET() {
   try {
     const result = await pool.query(
-      "SELECT id, email, name, role FROM dash_users ORDER BY created_at"
+      "SELECT id, email, name, role, telefone_whatsapp FROM dash_users ORDER BY created_at"
     );
 
     const users = result.rows.map((row) => ({
@@ -19,6 +19,7 @@ export async function GET() {
       email: row.email,
       name: row.name,
       role: row.role,
+      telefoneWhatsapp: row.telefone_whatsapp,
     }));
 
     return NextResponse.json({ users });
@@ -34,7 +35,7 @@ export async function GET() {
 // POST - Cria novo usuário
 export async function POST(req: NextRequest) {
   try {
-    const { email, name, password, role } = await req.json();
+    const { email, name, password, role, telefoneWhatsapp } = await req.json();
 
     if (!email || !name) {
       return NextResponse.json(
@@ -70,10 +71,10 @@ export async function POST(req: NextRequest) {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await pool.query(
-      `INSERT INTO dash_users (email, name, password, role)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, email, name, role`,
-      [email, name, hashedPassword, role || "team"]
+      `INSERT INTO dash_users (email, name, password, role, telefone_whatsapp)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, email, name, role, telefone_whatsapp`,
+      [email, name, hashedPassword, role || "team", telefoneWhatsapp || null]
     );
 
     const row = result.rows[0];
@@ -83,6 +84,7 @@ export async function POST(req: NextRequest) {
         email: row.email,
         name: row.name,
         role: row.role,
+        telefoneWhatsapp: row.telefone_whatsapp,
       },
     });
   } catch (error) {

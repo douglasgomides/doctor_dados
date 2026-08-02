@@ -47,13 +47,17 @@ export async function PUT(
       fields.push(`role = $${paramIndex++}`);
       values.push(data.role);
     }
+    if (data.telefoneWhatsapp !== undefined) {
+      fields.push(`telefone_whatsapp = $${paramIndex++}`);
+      values.push(data.telefoneWhatsapp || null);
+    }
 
     fields.push(`updated_at = NOW()`);
     values.push(id);
 
     const result = await pool.query(
       `UPDATE dash_users SET ${fields.join(", ")} WHERE id = $${paramIndex}
-       RETURNING id, email, name, role`,
+       RETURNING id, email, name, role, telefone_whatsapp`,
       values
     );
 
@@ -68,6 +72,7 @@ export async function PUT(
         email: row.email,
         name: row.name,
         role: row.role,
+        telefoneWhatsapp: row.telefone_whatsapp,
       },
     });
   } catch (error) {

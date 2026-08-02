@@ -9,6 +9,7 @@ export interface User {
   email: string;
   name: string;
   role: UserRole;
+  telefoneWhatsapp: string | null;
 }
 
 // ============================================

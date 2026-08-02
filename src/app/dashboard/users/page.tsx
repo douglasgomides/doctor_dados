@@ -45,6 +45,7 @@ export default function UsersPage() {
     email: "",
     password: "",
     role: "team" as UserRole,
+    telefoneWhatsapp: "",
   });
 
   useEffect(() => {
@@ -57,13 +58,19 @@ export default function UsersPage() {
 
   const openAdd = () => {
     setEditingUser(null);
-    setForm({ name: "", email: "", password: "", role: "team" });
+    setForm({ name: "", email: "", password: "", role: "team", telefoneWhatsapp: "" });
     setShowDialog(true);
   };
 
   const openEdit = (user: User) => {
     setEditingUser(user);
-    setForm({ name: user.name, email: user.email, password: "", role: user.role });
+    setForm({
+      name: user.name,
+      email: user.email,
+      password: "",
+      role: user.role,
+      telefoneWhatsapp: user.telefoneWhatsapp || "",
+    });
     setShowDialog(true);
   };
 
@@ -76,6 +83,7 @@ export default function UsersPage() {
         name: form.name,
         email: form.email,
         role: form.role,
+        telefoneWhatsapp: form.telefoneWhatsapp,
       };
       if (form.password) data.password = form.password;
       await updateUser(editingUser.id, data);
@@ -85,6 +93,7 @@ export default function UsersPage() {
         email: form.email,
         password: form.password,
         role: form.role,
+        telefoneWhatsapp: form.telefoneWhatsapp,
       });
     }
     setShowDialog(false);
@@ -127,6 +136,7 @@ export default function UsersPage() {
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
                   <TableHead>Nome</TableHead>
                   <TableHead>E-mail</TableHead>
+                  <TableHead>WhatsApp</TableHead>
                   <TableHead>Nível</TableHead>
                   <TableHead className="w-[100px] text-center">Ações</TableHead>
                 </TableRow>
@@ -145,6 +155,9 @@ export default function UsersPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{user.email}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {user.telefoneWhatsapp || <span className="text-muted-foreground/50">—</span>}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={user.role === "master" ? "default" : "secondary"}>
                         {user.role === "master" ? "Master" : "Equipe"}
@@ -217,6 +230,15 @@ export default function UsersPage() {
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 placeholder={editingUser ? "••••••••" : "Senha do usuário"}
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">WhatsApp (com DDI, ex: 5511999999999)</Label>
+              <Input
+                value={form.telefoneWhatsapp}
+                onChange={(e) => setForm({ ...form, telefoneWhatsapp: e.target.value })}
+                placeholder="5511999999999"
                 className="h-9"
               />
             </div>

@@ -136,6 +136,13 @@ export async function POST(req: NextRequest) {
       ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clientes(id) ON DELETE SET NULL;
     `);
 
+    // WhatsApp do membro da equipe — destino dos avisos automáticos de
+    // pendência/cadência (ver /api/automations/alerts).
+    await pool.query(`
+      ALTER TABLE dash_users
+      ADD COLUMN IF NOT EXISTS telefone_whatsapp VARCHAR(30);
+    `);
+
     return NextResponse.json({ success: true, message: "Banco inicializado com sucesso." });
   } catch (error) {
     console.error("Erro ao inicializar banco:", error);
