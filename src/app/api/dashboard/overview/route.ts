@@ -120,6 +120,7 @@ export async function GET() {
             }
           : null,
         pendentesAjuste: pendentesPorCliente.get(cliente) || 0,
+        proximaPauta: reuniao?.suggestedAgenda || [],
       };
     });
 

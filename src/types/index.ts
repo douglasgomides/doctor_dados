@@ -146,6 +146,7 @@ export interface ClienteOverviewRow {
   ultimoRoteiro: { data: string; status: RoteiroStatus; statusTier: StatusTier; score: number } | null;
   ultimaReuniao: { data: string; status: ReuniaoStatus; statusTier: StatusTier; score: number } | null;
   pendentesAjuste: number;
+  proximaPauta: string[];
 }
 
 export interface DashboardAlerts {

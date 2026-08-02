@@ -226,6 +226,34 @@ export default function VisaoGeralPage() {
         </div>
       </div>
 
+      {/* Pauta sugerida para as próximas reuniões */}
+      {clientesFiltrados.some((c) => c.proximaPauta.length > 0) && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider font-heading">
+            Pauta para as próximas reuniões
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {clientesFiltrados
+              .filter((c) => c.proximaPauta.length > 0)
+              .map((c) => (
+                <div key={c.cliente} className="rounded-xl border border-border bg-card/40 p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <ListChecks className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-sm font-medium">{c.cliente}</span>
+                  </div>
+                  <ul className="space-y-1">
+                    {c.proximaPauta.map((item, i) => (
+                      <li key={i} className="text-sm text-muted-foreground">
+                        • {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* Feed cronológico */}
       <div className="space-y-3">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider font-heading">
