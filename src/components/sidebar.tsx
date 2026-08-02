@@ -24,40 +24,56 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { UserRole } from "@/types";
+import type { LucideIcon } from "lucide-react";
 
-const VISAO_GERAL_ITEMS = [
+interface NavItem {
+  name: string;
+  href: string;
+  icon: LucideIcon;
+  badge?: string;
+}
+
+const VISAO_GERAL_ITEMS: NavItem[] = [
   { name: "Visão Geral", href: "/dashboard/visao-geral", icon: Sparkles },
-  { name: "Performance", href: "/dashboard/performance", icon: TrendingUp },
-  { name: "Comercial", href: "/dashboard/comercial", icon: Briefcase },
 ];
 
-const QUALIDADE_ITEMS = [
+// Qualidade agrupa tudo que valida conteúdo/entrega da equipe pro médico-
+// cliente — Performance entrou aqui (é a mesma nota/aprovação agregada por
+// pessoa, não é uma visão de negócio separada).
+const QUALIDADE_ITEMS: NavItem[] = [
   { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },
   { name: "Reuniões", href: "/dashboard/reunioes", icon: Users2 },
+  { name: "Performance", href: "/dashboard/performance", icon: TrendingUp },
 ];
 
-const FERRAMENTAS_ITEMS = [
-  { name: "Clonador de Carrossel", href: "/dashboard/carousel-tool", icon: Wand2 },
+// Comercial é sobre vender pra lead/prospect — natureza diferente de
+// Qualidade (que é sobre entregar bem pra quem já é cliente), por isso
+// ganha grupo próprio em vez de ficar dentro de "Visão Geral".
+const COMERCIAL_ITEMS: NavItem[] = [{ name: "Comercial", href: "/dashboard/comercial", icon: Briefcase }];
+
+const FERRAMENTAS_ITEMS: NavItem[] = [
+  { name: "Clonador de Carrossel", href: "/dashboard/carousel-tool", icon: Wand2, badge: "Beta" },
 ];
 
-const ADMIN_ITEMS = [
+const ADMIN_ITEMS: NavItem[] = [
   { name: "Clientes", href: "/dashboard/clientes", icon: Contact },
   { name: "Usuários", href: "/dashboard/users", icon: Users },
 ];
 
-const GERAL_ITEMS = [{ name: "Configurações", href: "/dashboard/settings", icon: Settings }];
+const GERAL_ITEMS: NavItem[] = [{ name: "Configurações", href: "/dashboard/settings", icon: Settings }];
 
 function getNavigationGroups(role: UserRole) {
   if (role === "master") {
     return [
       { label: "Visão Geral", items: VISAO_GERAL_ITEMS },
       { label: "Qualidade", items: QUALIDADE_ITEMS },
+      { label: "Comercial", items: COMERCIAL_ITEMS },
       { label: "Ferramentas", items: FERRAMENTAS_ITEMS },
       { label: "Admin", items: [...ADMIN_ITEMS, ...GERAL_ITEMS] },
     ];
   }
   return [
-    { label: "Qualidade", items: QUALIDADE_ITEMS },
+    { label: "Qualidade", items: QUALIDADE_ITEMS.filter((i) => i.name !== "Performance") },
     { label: "Ferramentas", items: FERRAMENTAS_ITEMS },
     { label: "Geral", items: GERAL_ITEMS },
   ];
@@ -123,7 +139,19 @@ export function Sidebar() {
                   )}
                 >
                   <item.icon className="h-4.5 w-4.5 shrink-0" />
-                  {!collapsed && <span>{item.name}</span>}
+                  {!collapsed && (
+                    <span className="flex items-center gap-1.5">
+                      {item.name}
+                      {item.badge && (
+                        <Badge
+                          variant="outline"
+                          className="text-[9px] px-1.5 py-0 h-4 border-primary/40 text-primary"
+                        >
+                          {item.badge}
+                        </Badge>
+                      )}
+                    </span>
+                  )}
                 </Link>
               );
             })}
