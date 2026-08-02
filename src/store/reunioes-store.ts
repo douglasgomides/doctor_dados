@@ -12,8 +12,15 @@ interface ReunioesState {
   }) => Promise<{ success: boolean; reuniao?: Reuniao; error?: string }>;
   reviewReuniao: (
     id: string,
-    data: { status?: Reuniao["status"]; reviewNote?: string }
-  ) => Promise<void>;
+    data: {
+      status?: Reuniao["status"];
+      reviewNote?: string;
+      clientName?: string;
+      tipo?: ReuniaoTipo;
+      content?: string;
+    }
+  ) => Promise<{ success: boolean; error?: string }>;
+  deleteReuniao: (id: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const useReunioesStore = create<ReunioesState>()((set) => ({
@@ -64,13 +71,29 @@ export const useReunioesStore = create<ReunioesState>()((set) => ({
         body: JSON.stringify(data),
       });
       const result = await res.json();
-      if (result.reuniao) {
-        set((state) => ({
-          reunioes: state.reunioes.map((r) => (r.id === id ? result.reuniao : r)),
-        }));
+      if (!res.ok) {
+        return { success: false, error: result.error || "Erro ao editar reunião." };
       }
-    } catch (error) {
-      console.error("Erro ao revisar reunião:", error);
+      set((state) => ({
+        reunioes: state.reunioes.map((r) => (r.id === id ? result.reuniao : r)),
+      }));
+      return { success: true };
+    } catch {
+      return { success: false, error: "Erro de conexão com o servidor." };
+    }
+  },
+
+  deleteReuniao: async (id) => {
+    try {
+      const res = await fetch(`/api/reunioes/${id}`, { method: "DELETE" });
+      const result = await res.json();
+      if (!res.ok) {
+        return { success: false, error: result.error || "Erro ao excluir reunião." };
+      }
+      set((state) => ({ reunioes: state.reunioes.filter((r) => r.id !== id) }));
+      return { success: true };
+    } catch {
+      return { success: false, error: "Erro de conexão com o servidor." };
     }
   },
 }));
