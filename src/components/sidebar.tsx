@@ -15,6 +15,7 @@ import {
   Sparkles,
   Contact,
   TrendingUp,
+  Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -33,6 +34,10 @@ const QUALIDADE_ITEMS = [
   { name: "Reuniões", href: "/dashboard/reunioes", icon: Users2 },
 ];
 
+const FERRAMENTAS_ITEMS = [
+  { name: "Clonador de Carrossel", href: "/dashboard/carousel-tool", icon: Wand2 },
+];
+
 const ADMIN_ITEMS = [
   { name: "Clientes", href: "/dashboard/clientes", icon: Contact },
   { name: "Usuários", href: "/dashboard/users", icon: Users },
@@ -45,11 +50,13 @@ function getNavigationGroups(role: UserRole) {
     return [
       { label: "Visão Geral", items: VISAO_GERAL_ITEMS },
       { label: "Qualidade", items: QUALIDADE_ITEMS },
+      { label: "Ferramentas", items: FERRAMENTAS_ITEMS },
       { label: "Admin", items: [...ADMIN_ITEMS, ...GERAL_ITEMS] },
     ];
   }
   return [
     { label: "Qualidade", items: QUALIDADE_ITEMS },
+    { label: "Ferramentas", items: FERRAMENTAS_ITEMS },
     { label: "Geral", items: GERAL_ITEMS },
   ];
 }
