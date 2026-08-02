@@ -10,6 +10,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  ClipboardCheck,
+  Users2,
+  Sparkles,
+  Contact,
+  TrendingUp,
   Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,16 +24,18 @@ import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 import { UserRole } from "@/types";
 
-const baseNavigation = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Campanhas", href: "/dashboard/campaigns", icon: Table2 },
-  { name: "Clonador de Carrossel", href: "/dashboard/carousel-tool", icon: Wand2 },
-  { name: "Configurações", href: "/dashboard/settings", icon: Settings },
+const VISAO_GERAL_ITEMS = [
+  { name: "Visão Geral", href: "/dashboard/visao-geral", icon: Sparkles },
+  { name: "Performance", href: "/dashboard/performance", icon: TrendingUp },
 ];
 
 const QUALIDADE_ITEMS = [
   { name: "Roteiros", href: "/dashboard/roteiros", icon: ClipboardCheck },
   { name: "Reuniões", href: "/dashboard/reunioes", icon: Users2 },
+];
+
+const FERRAMENTAS_ITEMS = [
+  { name: "Clonador de Carrossel", href: "/dashboard/carousel-tool", icon: Wand2 },
 ];
 
 const ADMIN_ITEMS = [
@@ -43,11 +50,13 @@ function getNavigationGroups(role: UserRole) {
     return [
       { label: "Visão Geral", items: VISAO_GERAL_ITEMS },
       { label: "Qualidade", items: QUALIDADE_ITEMS },
+      { label: "Ferramentas", items: FERRAMENTAS_ITEMS },
       { label: "Admin", items: [...ADMIN_ITEMS, ...GERAL_ITEMS] },
     ];
   }
   return [
     { label: "Qualidade", items: QUALIDADE_ITEMS },
+    { label: "Ferramentas", items: FERRAMENTAS_ITEMS },
     { label: "Geral", items: GERAL_ITEMS },
   ];
 }
