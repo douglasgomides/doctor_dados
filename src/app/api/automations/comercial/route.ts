@@ -23,6 +23,8 @@ function mapRow(row: any): ComercialAnalise {
     issues: row.issues,
     pontosFortes: row.pontos_fortes,
     pontosMelhoria: row.pontos_melhoria,
+    resultado: row.resultado,
+    valorFechado: row.valor_fechado != null ? Number(row.valor_fechado) : null,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }

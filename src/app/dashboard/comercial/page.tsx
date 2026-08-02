@@ -22,6 +22,15 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
   Briefcase,
   FileText,
   CheckCircle2,
@@ -29,8 +38,10 @@ import {
   AlertTriangle,
   ThumbsUp,
   Lightbulb,
+  TrendingUp,
 } from "lucide-react";
-import { ComercialAnalise } from "@/types";
+import { ComercialAnalise, ComercialResultado, COMERCIAL_RESULTADO_LABELS } from "@/types";
+import Link from "next/link";
 
 export default function ComercialPage() {
   const currentUser = useAuthStore((s) => s.user);
@@ -47,11 +58,20 @@ export default function ComercialPage() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight font-heading">Comercial</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Análise automática de calls comerciais, importadas da transcrição do Meet
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight font-heading">Comercial</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Análise automática de calls comerciais, importadas da transcrição do Meet
+          </p>
+        </div>
+        <Link
+          href="/dashboard/comercial/insights"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline shrink-0 mt-1"
+        >
+          <TrendingUp className="h-4 w-4" />
+          Relatório de padrões
+        </Link>
       </div>
 
       <Card className="border-border/50">
@@ -75,6 +95,7 @@ export default function ComercialPage() {
                   <TableHead>Participantes</TableHead>
                   <TableHead>Nota</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Resultado</TableHead>
                   <TableHead className="w-[80px] text-center">Ver</TableHead>
                 </TableRow>
               </TableHeader>
@@ -94,6 +115,9 @@ export default function ComercialPage() {
                     <TableCell>
                       <StatusBadge status={a.status} />
                     </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <ResultadoSelect analise={a} compact />
+                    </TableCell>
                     <TableCell className="text-center">
                       <FileText className="h-3.5 w-3.5 mx-auto text-muted-foreground" />
                     </TableCell>
@@ -101,7 +125,7 @@ export default function ComercialPage() {
                 ))}
                 {analises.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       Nenhuma call comercial analisada ainda.
                     </TableCell>
                   </TableRow>
@@ -129,6 +153,57 @@ function StatusBadge({ status }: { status: ComercialAnalise["status"] }) {
   );
 }
 
+const RESULTADO_NONE = "none";
+
+function ResultadoSelect({ analise, compact }: { analise: ComercialAnalise; compact?: boolean }) {
+  const updateResultado = useComercialStore((s) => s.updateResultado);
+  const [valor, setValor] = useState(analise.valorFechado?.toString() || "");
+  const [showValor, setShowValor] = useState(analise.resultado === "fechou");
+
+  async function handleChange(value: string) {
+    const resultado = value === RESULTADO_NONE ? null : (value as ComercialResultado);
+    setShowValor(resultado === "fechou");
+    await updateResultado(analise.id, resultado, resultado === "fechou" ? analise.valorFechado : null);
+  }
+
+  async function handleValorBlur() {
+    const numero = valor.trim() ? Number(valor) : null;
+    if (numero === analise.valorFechado) return;
+    await updateResultado(analise.id, analise.resultado, Number.isFinite(numero) ? numero : null);
+  }
+
+  return (
+    <div className={compact ? "flex items-center gap-2" : "flex flex-wrap items-center gap-2"}>
+      <Select value={analise.resultado || RESULTADO_NONE} onValueChange={handleChange}>
+        <SelectTrigger className={compact ? "h-8 w-[150px] text-xs" : "h-9 w-[180px]"}>
+          <SelectValue placeholder="Sem retorno" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={RESULTADO_NONE}>Sem retorno ainda</SelectItem>
+          {Object.entries(COMERCIAL_RESULTADO_LABELS).map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {showValor && !compact && (
+        <div className="flex items-center gap-1.5">
+          <Label className="text-xs text-muted-foreground shrink-0">R$</Label>
+          <Input
+            type="number"
+            className="h-9 w-28"
+            value={valor}
+            onChange={(e) => setValor(e.target.value)}
+            onBlur={handleValorBlur}
+            placeholder="valor"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ComercialDetalhe({ analise }: { analise: ComercialAnalise }) {
   const errors = analise.issues.filter((i) => i.severity === "erro");
   const warnings = analise.issues.filter((i) => i.severity === "alerta");
@@ -151,6 +226,13 @@ function ComercialDetalhe({ analise }: { analise: ComercialAnalise }) {
       </DialogHeader>
       <div className="space-y-4 text-sm">
         <Badge variant="outline">Nota: {analise.score}/100</Badge>
+
+        <div className="rounded-lg border border-border p-3 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Resultado do negócio
+          </p>
+          <ResultadoSelect analise={analise} />
+        </div>
 
         {analise.issues.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhum problema identificado.</p>

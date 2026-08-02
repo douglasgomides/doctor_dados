@@ -12,7 +12,12 @@ const PENDING_LIMIT = 100;
 const URGENTE_HORAS = 48;
 
 interface Alerta {
-  tipo: "roteiro_ajustar" | "reuniao_ajustar" | "cadencia_roteiros" | "cadencia_reunioes";
+  tipo:
+    | "roteiro_ajustar"
+    | "reuniao_ajustar"
+    | "comercial_ajustar"
+    | "cadencia_roteiros"
+    | "cadencia_reunioes";
   urgente: boolean;
   clienteNome: string;
   responsavelNome: string | null;
@@ -23,6 +28,33 @@ interface Alerta {
 
 function horasDesde(dataIso: string): number {
   return (Date.now() - new Date(dataIso).getTime()) / (1000 * 60 * 60);
+}
+
+// Faixa Unicode dos diacríticos combináveis, montada por código de
+// caractere (não por glifo) — mesmo motivo do lib/clientes.ts.
+const DIACRITICOS_RE = new RegExp(
+  `[${String.fromCharCode(0x0300)}-${String.fromCharCode(0x036f)}]`,
+  "g"
+);
+
+function semAcento(s: string): string {
+  return s.normalize("NFD").replace(DIACRITICOS_RE, "").toLowerCase();
+}
+
+// Calls comerciais não têm cliente/responsável cadastrado (não são
+// atendimento de um médico já cliente) — o "responsável" aqui é o
+// vendedor que participou da call. Tenta achar, entre os participantes em
+// texto livre, exatamente um membro da equipe (dash_users) pelo nome; se
+// achar 0 ou mais de 1, não arrisca notificar a pessoa errada.
+function acharVendedorPorParticipantes(
+  participantes: string[],
+  equipe: { name: string; telefone_whatsapp: string | null }[]
+): { name: string; telefone_whatsapp: string | null } | null {
+  const encontrados = equipe.filter((membro) =>
+    participantes.some((p) => semAcento(p).includes(semAcento(membro.name).split(" ")[0]))
+  );
+  const unicos = [...new Map(encontrados.map((m) => [m.name, m])).values()];
+  return unicos.length === 1 ? unicos[0] : null;
 }
 
 export async function GET(req: NextRequest) {
@@ -40,7 +72,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
     }
 
-    const [roteirosResult, reunioesResult, clientesResult] = await Promise.all([
+    const [roteirosResult, reunioesResult, comercialResult, equipeResult, clientesResult] =
+      await Promise.all([
       pool.query(
         `SELECT r.id, r.client_name, r.format, r.score, r.author_name, r.created_at,
                 u.name AS responsavel_name, u.telefone_whatsapp AS responsavel_whatsapp
@@ -63,6 +96,15 @@ export async function GET(req: NextRequest) {
          LIMIT $1`,
         [PENDING_LIMIT]
       ),
+      pool.query(
+        `SELECT id, titulo, participantes, score, created_at
+         FROM comercial_analises
+         WHERE status = 'ajustar'
+         ORDER BY created_at DESC
+         LIMIT $1`,
+        [PENDING_LIMIT]
+      ),
+      pool.query(`SELECT name, telefone_whatsapp FROM dash_users`),
       pool.query(
         `SELECT c.nome, c.roteiros_por_semana, c.reunioes_por_mes,
                 u.name AS responsavel_name, u.telefone_whatsapp AS responsavel_whatsapp,
@@ -113,6 +155,27 @@ export async function GET(req: NextRequest) {
           tipo: row.tipo,
           score: row.score,
           autorNome: row.author_name,
+          criadoEm,
+        },
+      });
+    }
+
+    for (const row of comercialResult.rows) {
+      const criadoEm = new Date(row.created_at).toISOString();
+      const urgente = horasDesde(criadoEm) >= URGENTE_HORAS;
+      const participantes: string[] = row.participantes || [];
+      const vendedor = acharVendedorPorParticipantes(participantes, equipeResult.rows);
+      alertas.push({
+        tipo: "comercial_ajustar",
+        urgente,
+        clienteNome: row.titulo || "Call comercial",
+        responsavelNome: vendedor?.name ?? null,
+        responsavelWhatsapp: vendedor?.telefone_whatsapp ?? null,
+        mensagem: `${urgente ? "[URGENTE] " : ""}A call comercial "${row.titulo || "sem título"}" (nota ${row.score}/100) ficou marcada como "precisa de ajuste"${urgente ? ` há mais de ${URGENTE_HORAS}h` : ""}. Dá uma olhada nos pontos de melhoria antes da próxima call.`,
+        detalhe: {
+          comercialId: row.id,
+          score: row.score,
+          participantes,
           criadoEm,
         },
       });
