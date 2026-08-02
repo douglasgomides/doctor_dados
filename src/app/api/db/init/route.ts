@@ -143,6 +143,13 @@ export async function POST(req: NextRequest) {
       ADD COLUMN IF NOT EXISTS telefone_whatsapp VARCHAR(30);
     `);
 
+    // Ideias de conteúdo sugeridas pela IA a partir da transcrição da
+    // reunião (ver src/lib/reuniao-validator.ts).
+    await pool.query(`
+      ALTER TABLE reunioes
+      ADD COLUMN IF NOT EXISTS suggested_content_ideas JSONB NOT NULL DEFAULT '[]';
+    `);
+
     return NextResponse.json({ success: true, message: "Banco inicializado com sucesso." });
   } catch (error) {
     console.error("Erro ao inicializar banco:", error);

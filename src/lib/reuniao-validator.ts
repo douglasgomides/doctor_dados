@@ -33,11 +33,14 @@ Sinais de alerta a observar (cada um vira um "alerta" quando detectado):
 
 Além da avaliação, sintetize uma pauta sugerida (suggestedAgenda) para a PRÓXIMA reunião: itens objetivos a retomar/cobrar, com base nos compromissos assumidos e nos alertas identificados nesta reunião.
 
+Sintetize também de 3 a 5 ideias de conteúdo (suggestedContentIdeas) para Reels/Carrossel/Stories, extraídas do que foi REALMENTE dito na reunião — dúvidas do médico, perguntas de pacientes que ele mencionou, objeções, casos/temas que ele quer abordar, resultados discutidos. Nunca sugira temas genéricos desconectados da conversa; se a transcrição não trouxer material suficiente para uma ideia de conteúdo, retorne uma lista menor (pode ser vazia) em vez de inventar.
+
 Retorne SEMPRE sua avaliação chamando a ferramenta fornecida, com:
 - status: "aprovado" se não houver nenhum "erro" (requisito obrigatório ausente); "ajustar" caso contrário.
 - score: nota de 0 a 100 (comece em 100 e desconte: erro -25, alerta -10, mínimo 0).
 - issues: lista de problemas, cada um com severity ("erro" para requisito obrigatório ausente, "alerta" para sinal de risco), rule (slug curto, ex: "comprometimento-data", "comprometimento-medico", "comprometimento-consultoria", "fala-desequilibrada", "sem-cruzamento-negocio", "reuniao-curta") e message (explicação objetiva em português).
-- suggestedAgenda: lista de strings com os itens objetivos para a pauta da próxima reunião.`;
+- suggestedAgenda: lista de strings com os itens objetivos para a pauta da próxima reunião.
+- suggestedContentIdeas: lista de ideias de conteúdo, cada uma com format ("reel", "carrossel" ou "stories" — o que melhor se encaixa no tema) e tema (uma frase curta descrevendo o ângulo do conteúdo, específica o suficiente pra virar um roteiro).`;
 
 const ISSUE_SCHEMA = {
   type: "object",
@@ -49,6 +52,15 @@ const ISSUE_SCHEMA = {
   required: ["severity", "rule", "message"],
 };
 
+const CONTENT_IDEA_SCHEMA = {
+  type: "object",
+  properties: {
+    format: { type: "string", enum: ["reel", "carrossel", "stories"] },
+    tema: { type: "string" },
+  },
+  required: ["format", "tema"],
+};
+
 const REUNIAO_SCHEMA: Anthropic.Tool.InputSchema = {
   type: "object",
   properties: {
@@ -56,8 +68,9 @@ const REUNIAO_SCHEMA: Anthropic.Tool.InputSchema = {
     score: { type: "number", minimum: 0, maximum: 100 },
     issues: { type: "array", items: ISSUE_SCHEMA },
     suggestedAgenda: { type: "array", items: { type: "string" } },
+    suggestedContentIdeas: { type: "array", items: CONTENT_IDEA_SCHEMA },
   },
-  required: ["status", "score", "issues", "suggestedAgenda"],
+  required: ["status", "score", "issues", "suggestedAgenda", "suggestedContentIdeas"],
 };
 
 interface ReuniaoAiResult {
@@ -65,6 +78,7 @@ interface ReuniaoAiResult {
   score: number;
   issues: ReuniaoValidation["issues"];
   suggestedAgenda: string[];
+  suggestedContentIdeas: ReuniaoValidation["suggestedContentIdeas"];
 }
 
 export async function validateReuniao(
@@ -89,6 +103,7 @@ export async function validateReuniao(
       wordCount,
       estimatedDurationMinutes,
       suggestedAgenda: [],
+      suggestedContentIdeas: [],
     };
   }
 
@@ -112,5 +127,6 @@ export async function validateReuniao(
     wordCount,
     estimatedDurationMinutes,
     suggestedAgenda: result.suggestedAgenda,
+    suggestedContentIdeas: result.suggestedContentIdeas,
   };
 }

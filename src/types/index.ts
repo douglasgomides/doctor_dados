@@ -81,6 +81,11 @@ export interface ReuniaoIssue {
   message: string;
 }
 
+export interface ContentIdea {
+  format: RoteiroFormat;
+  tema: string;
+}
+
 export interface ReuniaoValidation {
   status: ReuniaoStatus;
   score: number;
@@ -88,6 +93,7 @@ export interface ReuniaoValidation {
   wordCount: number;
   estimatedDurationMinutes: number;
   suggestedAgenda: string[];
+  suggestedContentIdeas: ContentIdea[];
 }
 
 export interface Reuniao {
@@ -102,6 +108,7 @@ export interface Reuniao {
   score: number;
   issues: ReuniaoIssue[];
   suggestedAgenda: string[];
+  suggestedContentIdeas: ContentIdea[];
   reviewNote: string | null;
   reviewedByName: string | null;
   reviewedAt: string | null;

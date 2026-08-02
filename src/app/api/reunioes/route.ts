@@ -24,6 +24,7 @@ function mapRow(row: any): Reuniao {
     score: row.score,
     issues: row.issues,
     suggestedAgenda: row.suggested_agenda,
+    suggestedContentIdeas: row.suggested_content_ideas,
     reviewNote: row.review_note,
     reviewedByName: row.reviewed_by_name,
     reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
@@ -95,8 +96,8 @@ export async function POST(req: NextRequest) {
     const clientId = await findOrCreateClienteId(clientName);
 
     const result = await pool.query(
-      `INSERT INTO reunioes (author_id, author_name, client_id, client_name, tipo, content, status, score, issues, suggested_agenda)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO reunioes (author_id, author_name, client_id, client_name, tipo, content, status, score, issues, suggested_agenda, suggested_content_ideas)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         userId,
@@ -109,6 +110,7 @@ export async function POST(req: NextRequest) {
         validation.score,
         JSON.stringify(validation.issues),
         JSON.stringify(validation.suggestedAgenda),
+        JSON.stringify(validation.suggestedContentIdeas),
       ]
     );
 

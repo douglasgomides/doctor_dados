@@ -32,8 +32,8 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Users, CheckCircle2, AlertTriangle, XCircle, FileText, ListChecks } from "lucide-react";
-import { Reuniao, ReuniaoTipo, REUNIAO_TIPO_LABELS } from "@/types";
+import { Users, CheckCircle2, AlertTriangle, XCircle, FileText, ListChecks, Lightbulb } from "lucide-react";
+import { Reuniao, ReuniaoTipo, REUNIAO_TIPO_LABELS, ROTEIRO_FORMAT_LABELS } from "@/types";
 
 const TIPO_OPTIONS: ReuniaoTipo[] = ["mentoria", "grupo", "onboarding", "pontual"];
 
@@ -337,6 +337,25 @@ function ValidationResult({ reuniao }: { reuniao: Reuniao }) {
             {reuniao.suggestedAgenda.map((item, i) => (
               <li key={i} className="text-sm text-muted-foreground">
                 • {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {reuniao.suggestedContentIdeas.length > 0 && (
+        <div className="rounded-lg border border-border/50 p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <Lightbulb className="h-4 w-4 text-muted-foreground" />
+            <span className="font-medium text-sm">Ideias de conteúdo a partir desta reunião</span>
+          </div>
+          <ul className="space-y-1.5">
+            {reuniao.suggestedContentIdeas.map((idea, i) => (
+              <li key={i} className="text-sm flex items-start gap-2">
+                <Badge variant="outline" className="shrink-0 mt-0.5">
+                  {ROTEIRO_FORMAT_LABELS[idea.format]}
+                </Badge>
+                <span className="text-muted-foreground">{idea.tema}</span>
               </li>
             ))}
           </ul>

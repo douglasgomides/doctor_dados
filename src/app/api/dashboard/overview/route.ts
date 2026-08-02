@@ -47,6 +47,7 @@ function mapReuniaoRow(row: any): Reuniao {
     score: row.score,
     issues: row.issues,
     suggestedAgenda: row.suggested_agenda,
+    suggestedContentIdeas: row.suggested_content_ideas,
     reviewNote: row.review_note,
     reviewedByName: row.reviewed_by_name,
     reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
