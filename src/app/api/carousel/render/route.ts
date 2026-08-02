@@ -3,28 +3,66 @@ import { renderSlide } from "@/lib/carousel/render";
 import type { BrandKit, SlideContent, TemplateSpec } from "@/lib/carousel/types";
 
 interface RenderRequestBody {
-  spec: TemplateSpec;
+  /** Uma spec só, aplicada a todos os slides (uso simples: 1 layout repetido). */
+  spec?: TemplateSpec;
+  /** Uma spec por posição — specs[i] é usada pra slides[i]. Se specs.length for
+   * menor que slides.length, a última spec do array é reaproveitada pras
+   * posições restantes (comum quando só as primeiras lâminas têm layout
+   * diferente, ex.: capa + conteúdo repetido). */
+  specs?: TemplateSpec[];
   brand: BrandKit;
   slides: SlideContent[];
 }
 
-// Recebe a spec de um template (extraída previamente ou editada à mão), a
-// marca do cliente e o conteúdo de N slides, e devolve os PNGs gerados em
-// base64. Uso interno — protegido por sessão via src/proxy.ts.
+function isValidSpec(spec: unknown): spec is TemplateSpec {
+  if (!spec || typeof spec !== "object") return false;
+  const s = spec as Partial<TemplateSpec>;
+  return (
+    !!s.canvas &&
+    typeof s.canvas.width === "number" &&
+    typeof s.canvas.height === "number" &&
+    typeof s.canvas.background === "string" &&
+    Array.isArray(s.blocks)
+  );
+}
+
+// Recebe a(s) spec(s) de template (extraída(s) previamente ou editada(s) à
+// mão), a marca do cliente e o conteúdo de N slides, e devolve os PNGs
+// gerados em base64. Uso interno — protegido por sessão via src/proxy.ts.
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as Partial<RenderRequestBody>;
 
-    if (!body.spec || !body.brand || !Array.isArray(body.slides) || body.slides.length === 0) {
+    if (!body.brand || !Array.isArray(body.slides) || body.slides.length === 0) {
       return NextResponse.json(
-        { error: "Corpo inválido — envie { spec, brand, slides[] }." },
+        { error: "Corpo inválido — envie { spec ou specs[], brand, slides[] }." },
+        { status: 400 }
+      );
+    }
+
+    const specsList = body.specs && body.specs.length > 0 ? body.specs : body.spec ? [body.spec] : [];
+
+    if (specsList.length === 0) {
+      return NextResponse.json(
+        { error: "Envie 'spec' (um layout pra todos os slides) ou 'specs' (um layout por posição)." },
+        { status: 400 }
+      );
+    }
+
+    const invalidIndex = specsList.findIndex((s) => !isValidSpec(s));
+    if (invalidIndex !== -1) {
+      return NextResponse.json(
+        {
+          error: `A spec na posição ${invalidIndex} está incompleta — falta 'canvas' (width/height/background) ou 'blocks'. Reanalise a imagem de referência dessa lâmina ou corrija o JSON manualmente.`,
+        },
         { status: 400 }
       );
     }
 
     const images = await Promise.all(
-      body.slides.map(async (slide) => {
-        const buf = await renderSlide(body.spec as TemplateSpec, slide, body.brand as BrandKit);
+      body.slides.map(async (slide, i) => {
+        const spec = specsList[Math.min(i, specsList.length - 1)];
+        const buf = await renderSlide(spec, slide, body.brand as BrandKit);
         return buf.toString("base64");
       })
     );

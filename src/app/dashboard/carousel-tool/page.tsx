@@ -1,8 +1,9 @@
 "use client";
 
-// Piloto interno: upload de um modelo de referência -> extração da estrutura
-// via IA -> render com marca/conteúdo novos. Sem preocupação de design ainda
-// (uso só do time interno) — o objetivo aqui é validar o motor ponta a ponta.
+// Piloto interno: upload de 1+ modelos de referência (um por lâmina do
+// carrossel original) -> extração da estrutura de cada um via IA -> render
+// com marca/conteúdo novos. Sem preocupação de design ainda (uso só do time
+// interno) — o objetivo aqui é validar o motor ponta a ponta.
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -39,8 +40,8 @@ const EXAMPLE_CONTENT = JSON.stringify(
 );
 
 export default function CarouselToolPage() {
-  const [referenceFile, setReferenceFile] = useState<File | null>(null);
-  const [specText, setSpecText] = useState("");
+  const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
+  const [specsText, setSpecsText] = useState(""); // JSON array de TemplateSpec, uma por posição/lâmina
   const [contentText, setContentText] = useState(EXAMPLE_CONTENT);
   const [brandName, setBrandName] = useState("Dr. Exemplo");
   const [brandHandle, setBrandHandle] = useState("@drexemplo");
@@ -53,16 +54,16 @@ export default function CarouselToolPage() {
   const [error, setError] = useState<string | null>(null);
 
   async function handleExtract() {
-    if (!referenceFile) return;
+    if (referenceFiles.length === 0) return;
     setExtracting(true);
     setError(null);
     try {
       const form = new FormData();
-      form.append("image", referenceFile);
+      for (const file of referenceFiles) form.append("image", file);
       const res = await fetch("/api/carousel/extract", { method: "POST", body: form });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Falha ao extrair modelo.");
-      setSpecText(JSON.stringify(data.spec, null, 2));
+      if (!res.ok) throw new Error(data.error || "Falha ao extrair modelo(s).");
+      setSpecsText(JSON.stringify(data.specs, null, 2));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro desconhecido.");
     } finally {
@@ -75,7 +76,8 @@ export default function CarouselToolPage() {
     setError(null);
     setImages([]);
     try {
-      const spec = JSON.parse(specText);
+      const parsedSpecs = JSON.parse(specsText);
+      const specs = Array.isArray(parsedSpecs) ? parsedSpecs : [parsedSpecs];
       const slides = JSON.parse(contentText);
       const brand = {
         name: brandName,
@@ -88,7 +90,7 @@ export default function CarouselToolPage() {
       const res = await fetch("/api/carousel/render", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spec, brand, slides }),
+        body: JSON.stringify({ specs, brand, slides }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Falha ao renderizar.");
@@ -105,8 +107,9 @@ export default function CarouselToolPage() {
       <div>
         <h1 className="text-2xl font-bold">Clonador de Carrossel (piloto interno)</h1>
         <p className="text-sm text-muted-foreground">
-          Sobe um modelo de referência, extrai a estrutura, e gera de novo com marca/conteúdo diferentes.
-          Sem tela bonita ainda — é só pra validar o motor.
+          Sobe o(s) modelo(s) de referência (uma imagem por lâmina, se o carrossel original tiver layouts
+          diferentes por posição — capa, conteúdo, CTA), extrai a estrutura de cada um, e gera de novo com
+          marca/conteúdo diferentes. Sem tela bonita ainda — é só pra validar o motor.
         </p>
       </div>
 
@@ -118,28 +121,33 @@ export default function CarouselToolPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">1. Modelo de referência</CardTitle>
+          <CardTitle className="text-base">1. Modelo(s) de referência</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <Input
             type="file"
+            multiple
             accept="image/png,image/jpeg,image/webp"
-            onChange={(e) => setReferenceFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => setReferenceFiles(Array.from(e.target.files ?? []))}
           />
-          <Button onClick={handleExtract} disabled={!referenceFile || extracting}>
+          <p className="text-xs text-muted-foreground">
+            Selecione uma imagem por lâmina do carrossel original, na ordem certa (ex.: capa, conteúdo 1,
+            conteúdo 2, CTA). Se todas as lâminas usam o mesmo layout, uma imagem já basta.
+          </p>
+          <Button onClick={handleExtract} disabled={referenceFiles.length === 0 || extracting}>
             {extracting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Analisar modelo (extrair estrutura)
+            Analisar {referenceFiles.length > 1 ? `${referenceFiles.length} modelos` : "modelo"} (extrair estrutura)
           </Button>
           <p className="text-xs text-muted-foreground">
-            Requer <code>ANTHROPIC_API_KEY</code> configurada no ambiente. Sem ela, cole a spec manualmente abaixo.
+            Requer <code>ANTHROPIC_API_KEY</code> configurada no ambiente. Sem ela, cole as specs manualmente abaixo.
           </p>
-          <Label htmlFor="spec">Estrutura extraída (JSON — pode editar)</Label>
+          <Label htmlFor="specs">Estruturas extraídas — array JSON, uma por posição (pode editar)</Label>
           <textarea
-            id="spec"
+            id="specs"
             className="w-full h-64 font-mono text-xs border rounded-md p-2 bg-muted/20"
-            value={specText}
-            onChange={(e) => setSpecText(e.target.value)}
-            placeholder="Clique em 'Analisar modelo' ou cole uma spec manualmente."
+            value={specsText}
+            onChange={(e) => setSpecsText(e.target.value)}
+            placeholder="Clique em 'Analisar' ou cole um array de specs manualmente: [ {...}, {...} ]"
           />
         </CardContent>
       </Card>
@@ -177,14 +185,18 @@ export default function CarouselToolPage() {
           <CardTitle className="text-base">3. Conteúdo dos slides</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Label htmlFor="content">Conteúdo (JSON — um objeto por slide)</Label>
+          <Label htmlFor="content">Conteúdo (JSON — um objeto por slide final)</Label>
           <textarea
             id="content"
             className="w-full h-56 font-mono text-xs border rounded-md p-2 bg-muted/20"
             value={contentText}
             onChange={(e) => setContentText(e.target.value)}
           />
-          <Button onClick={handleRender} disabled={!specText || rendering}>
+          <p className="text-xs text-muted-foreground">
+            Se tiver menos structs em &quot;2.&quot; do que slides aqui, a última spec é reaproveitada nas
+            posições restantes (útil quando só a capa é diferente e o resto repete o mesmo layout).
+          </p>
+          <Button onClick={handleRender} disabled={!specsText || rendering}>
             {rendering && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Gerar slides
           </Button>
