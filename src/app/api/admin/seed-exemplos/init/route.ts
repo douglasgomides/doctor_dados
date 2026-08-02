@@ -20,7 +20,7 @@ export async function POST() {
     await Promise.all(
       clientIds.map((clientId, i) =>
         pool.query(
-          `UPDATE clientes SET responsavel_id = $1, roteiros_por_semana = 2, reunioes_por_mes = 1, ativo = true WHERE id = $2`,
+          `UPDATE clientes SET responsavel_id = $1, roteiros_por_semana = 2, reunioes_por_mes = 1, ativo = true, is_test = true WHERE id = $2`,
           [authors[i % authors.length].id, clientId]
         )
       )

@@ -179,6 +179,21 @@ export async function POST(req: NextRequest) {
       ADD COLUMN IF NOT EXISTS valor_fechado NUMERIC;
     `);
 
+    // Marca registros gerados pelo botão "Gerar dados de exemplo" (ver
+    // /api/admin/seed-exemplos/*), pra separar de forma confiável dados de
+    // demonstração dos dados reais — Visão Geral e Performance excluem
+    // is_test=true das métricas agregadas por padrão.
+    await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;`);
+    await pool.query(`ALTER TABLE roteiros ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;`);
+    await pool.query(`ALTER TABLE reunioes ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;`);
+    await pool.query(`ALTER TABLE comercial_analises ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;`);
+
+    // Segmentação do cadastro de cliente, pra permitir agrupar/priorizar
+    // (ver /dashboard/clientes).
+    await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS especialidade VARCHAR(255);`);
+    await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS cidade VARCHAR(255);`);
+    await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS plano VARCHAR(255);`);
+
     // Itens de follow-up extraídos automaticamente das dailies internas
     // (ver /api/automations/dailies) — registro próprio além das tarefas
     // já criadas no ClickUp pelo n8n, pra manter histórico/auditoria aqui.

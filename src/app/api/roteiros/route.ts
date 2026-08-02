@@ -28,6 +28,7 @@ function mapRow(row: any): Roteiro {
     reviewNote: row.review_note,
     reviewedByName: row.reviewed_by_name,
     reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
+    isTest: row.is_test,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }

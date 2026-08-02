@@ -15,7 +15,11 @@ function mapRow(row: any): Cliente {
     telefoneWhatsapp: row.telefone_whatsapp,
     roteirosPorSemana: row.roteiros_por_semana,
     reunioesPorMes: row.reunioes_por_mes,
+    especialidade: row.especialidade,
+    cidade: row.cidade,
+    plano: row.plano,
     ativo: row.ativo,
+    isTest: row.is_test,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
@@ -37,16 +41,24 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { nome, responsavelId, telefoneWhatsapp, roteirosPorSemana, reunioesPorMes } =
-      await req.json();
+    const {
+      nome,
+      responsavelId,
+      telefoneWhatsapp,
+      roteirosPorSemana,
+      reunioesPorMes,
+      especialidade,
+      cidade,
+      plano,
+    } = await req.json();
 
     if (!nome || typeof nome !== "string" || !nome.trim()) {
       return NextResponse.json({ error: "Informe o nome do cliente." }, { status: 400 });
     }
 
     const result = await pool.query(
-      `INSERT INTO clientes (nome, responsavel_id, telefone_whatsapp, roteiros_por_semana, reunioes_por_mes)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO clientes (nome, responsavel_id, telefone_whatsapp, roteiros_por_semana, reunioes_por_mes, especialidade, cidade, plano)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
       [
         nome.trim(),
@@ -54,6 +66,9 @@ export async function POST(req: NextRequest) {
         telefoneWhatsapp || null,
         roteirosPorSemana || null,
         reunioesPorMes || null,
+        especialidade || null,
+        cidade || null,
+        plano || null,
       ]
     );
 
