@@ -168,7 +168,7 @@ export default function ReunioesPage() {
             </CardTitle>
           </div>
           <CardDescription>
-            {reunioes.length} reunião{reunioes.length !== 1 ? "ões" : ""} registrada
+            {reunioes.length} {reunioes.length !== 1 ? "reuniões" : "reunião"} registrada
             {reunioes.length !== 1 ? "s" : ""}
           </CardDescription>
         </CardHeader>
