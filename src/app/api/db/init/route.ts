@@ -108,6 +108,34 @@ export async function POST(req: NextRequest) {
       );
     `);
 
+    // Cria tabela clientes (médicos atendidos pela agência), com um
+    // responsável da equipe e metas de cadência — base para automatizar
+    // cobrança/follow-up mais pra frente.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS clientes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        nome VARCHAR(255) UNIQUE NOT NULL,
+        responsavel_id UUID REFERENCES dash_users(id) ON DELETE SET NULL,
+        telefone_whatsapp VARCHAR(30),
+        roteiros_por_semana INTEGER,
+        reunioes_por_mes INTEGER,
+        ativo BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Liga roteiros/reunioes ao cadastro de clientes (preenchido
+    // automaticamente na hora do envio — ver /api/roteiros e /api/reunioes).
+    await pool.query(`
+      ALTER TABLE roteiros
+      ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clientes(id) ON DELETE SET NULL;
+    `);
+    await pool.query(`
+      ALTER TABLE reunioes
+      ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clientes(id) ON DELETE SET NULL;
+    `);
+
     return NextResponse.json({ success: true, message: "Banco inicializado com sucesso." });
   } catch (error) {
     console.error("Erro ao inicializar banco:", error);

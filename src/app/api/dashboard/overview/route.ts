@@ -18,6 +18,7 @@ function mapRoteiroRow(row: any): Roteiro {
     id: row.id,
     authorId: row.author_id,
     authorName: row.author_name,
+    clientId: row.client_id,
     clientName: row.client_name,
     format: row.format,
     title: row.title,
@@ -38,6 +39,7 @@ function mapReuniaoRow(row: any): Reuniao {
     id: row.id,
     authorId: row.author_id,
     authorName: row.author_name,
+    clientId: row.client_id,
     clientName: row.client_name,
     tipo: row.tipo,
     content: row.content,
@@ -54,13 +56,22 @@ function mapReuniaoRow(row: any): Reuniao {
 
 export async function GET() {
   try {
-    const [roteirosResult, reunioesResult] = await Promise.all([
+    const [roteirosResult, reunioesResult, clientesResult] = await Promise.all([
       pool.query(`SELECT * FROM roteiros ORDER BY created_at DESC LIMIT $1`, [ROW_LIMIT]),
       pool.query(`SELECT * FROM reunioes ORDER BY created_at DESC LIMIT $1`, [ROW_LIMIT]),
+      pool.query(
+        `SELECT c.nome, u.name AS responsavel_name
+         FROM clientes c
+         LEFT JOIN dash_users u ON u.id = c.responsavel_id`
+      ),
     ]);
 
     const roteiros = roteirosResult.rows.map(mapRoteiroRow);
     const reunioes = reunioesResult.rows.map(mapReuniaoRow);
+
+    const responsavelPorCliente = new Map<string, string | null>(
+      clientesResult.rows.map((row) => [row.nome.toLowerCase(), row.responsavel_name])
+    );
 
     // Ambas as listas já vêm ordenadas por created_at DESC, então o primeiro
     // roteiro/reunião visto por cliente é o mais recente.
@@ -90,6 +101,7 @@ export async function GET() {
       const reuniao = latestReuniaoByCliente.get(cliente) || null;
       return {
         cliente,
+        responsavelName: responsavelPorCliente.get(cliente.toLowerCase()) || null,
         ultimoRoteiro: roteiro
           ? {
               data: roteiro.createdAt,

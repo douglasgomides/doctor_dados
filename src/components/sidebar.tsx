@@ -13,6 +13,7 @@ import {
   ClipboardCheck,
   Users2,
   Sparkles,
+  Contact,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -28,7 +29,10 @@ const QUALIDADE_ITEMS = [
   { name: "Reuniões", href: "/dashboard/reunioes", icon: Users2 },
 ];
 
-const ADMIN_ITEMS = [{ name: "Usuários", href: "/dashboard/users", icon: Users }];
+const ADMIN_ITEMS = [
+  { name: "Clientes", href: "/dashboard/clientes", icon: Contact },
+  { name: "Usuários", href: "/dashboard/users", icon: Users },
+];
 
 const GERAL_ITEMS = [{ name: "Configurações", href: "/dashboard/settings", icon: Settings }];
 

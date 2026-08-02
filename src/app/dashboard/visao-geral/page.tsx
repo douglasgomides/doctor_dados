@@ -167,6 +167,7 @@ export default function VisaoGeralPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Cliente</TableHead>
+                <TableHead>Responsável</TableHead>
                 <TableHead>Último roteiro</TableHead>
                 <TableHead>Última reunião</TableHead>
                 <TableHead>Pendências</TableHead>
@@ -177,6 +178,11 @@ export default function VisaoGeralPage() {
               {clientesFiltrados.map((c) => (
                 <TableRow key={c.cliente}>
                   <TableCell className="font-medium">{c.cliente}</TableCell>
+                  <TableCell className="text-sm">
+                    {c.responsavelName || (
+                      <span className="text-destructive/80">sem responsável</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {c.ultimoRoteiro ? (
                       <>
@@ -209,7 +215,7 @@ export default function VisaoGeralPage() {
               ))}
               {clientesFiltrados.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     Nenhum cliente com validações registradas ainda.
                   </TableCell>
                 </TableRow>

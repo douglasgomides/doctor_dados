@@ -14,6 +14,7 @@ function mapRow(row: any): Reuniao {
     id: row.id,
     authorId: row.author_id,
     authorName: row.author_name,
+    clientId: row.client_id,
     clientName: row.client_name,
     tipo: row.tipo,
     content: row.content,

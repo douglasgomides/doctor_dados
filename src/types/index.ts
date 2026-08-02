@@ -45,6 +45,7 @@ export interface Roteiro {
   id: string;
   authorId: string;
   authorName: string;
+  clientId: string | null;
   clientName: string;
   format: RoteiroFormat;
   title: string;
@@ -92,6 +93,7 @@ export interface Reuniao {
   id: string;
   authorId: string;
   authorName: string;
+  clientId: string | null;
   clientName: string;
   tipo: ReuniaoTipo;
   content: string;
@@ -106,6 +108,23 @@ export interface Reuniao {
 }
 
 // ============================================
+// CLIENTES — cadastro dos médicos atendidos, com responsável da
+// equipe e metas de cadência (base para automatizar cobrança/follow-up)
+// ============================================
+
+export interface Cliente {
+  id: string;
+  nome: string;
+  responsavelId: string | null;
+  responsavelName: string | null;
+  telefoneWhatsapp: string | null;
+  roteirosPorSemana: number | null;
+  reunioesPorMes: number | null;
+  ativo: boolean;
+  createdAt: string;
+}
+
+// ============================================
 // VISÃO GERAL — agrega os próprios roteiros e reuniões
 // validados por IA neste app (nenhuma dependência externa)
 // ============================================
@@ -115,6 +134,7 @@ export type StatusTier = "ok" | "atencao" | "critico";
 
 export interface ClienteOverviewRow {
   cliente: string;
+  responsavelName: string | null;
   ultimoRoteiro: { data: string; status: RoteiroStatus; statusTier: StatusTier; score: number } | null;
   ultimaReuniao: { data: string; status: ReuniaoStatus; statusTier: StatusTier; score: number } | null;
   pendentesAjuste: number;

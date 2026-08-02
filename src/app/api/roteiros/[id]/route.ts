@@ -15,6 +15,7 @@ function mapRow(row: any): Roteiro {
     id: row.id,
     authorId: row.author_id,
     authorName: row.author_name,
+    clientId: row.client_id,
     clientName: row.client_name,
     format: row.format,
     title: row.title,

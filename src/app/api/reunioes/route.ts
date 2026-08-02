@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { validateReuniao } from "@/lib/reuniao-validator";
+import { findOrCreateClienteId } from "@/lib/clientes";
 import { Reuniao, ReuniaoTipo } from "@/types";
 
 // Autenticação é imposta pelo middleware (src/proxy.ts) para todo o
@@ -15,6 +16,7 @@ function mapRow(row: any): Reuniao {
     id: row.id,
     authorId: row.author_id,
     authorName: row.author_name,
+    clientId: row.client_id,
     clientName: row.client_name,
     tipo: row.tipo,
     content: row.content,
@@ -90,14 +92,16 @@ export async function POST(req: NextRequest) {
     }
 
     const validation = await validateReuniao(tipo, content);
+    const clientId = await findOrCreateClienteId(clientName);
 
     const result = await pool.query(
-      `INSERT INTO reunioes (author_id, author_name, client_name, tipo, content, status, score, issues, suggested_agenda)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO reunioes (author_id, author_name, client_id, client_name, tipo, content, status, score, issues, suggested_agenda)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
       [
         userId,
         authorName,
+        clientId,
         clientName.trim(),
         tipo,
         content,

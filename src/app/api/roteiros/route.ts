@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { validateRoteiro } from "@/lib/roteiro-validator";
+import { findOrCreateClienteId } from "@/lib/clientes";
 import { Roteiro, RoteiroFormat } from "@/types";
 
 // Autenticação é imposta pelo middleware (src/proxy.ts) para todo o
@@ -16,6 +17,7 @@ function mapRow(row: any): Roteiro {
     id: row.id,
     authorId: row.author_id,
     authorName: row.author_name,
+    clientId: row.client_id,
     clientName: row.client_name,
     format: row.format,
     title: row.title,
@@ -91,14 +93,16 @@ export async function POST(req: NextRequest) {
     }
 
     const validation = await validateRoteiro(format, content);
+    const clientId = await findOrCreateClienteId(clientName);
 
     const result = await pool.query(
-      `INSERT INTO roteiros (author_id, author_name, client_name, format, title, content, status, score, issues)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO roteiros (author_id, author_name, client_id, client_name, format, title, content, status, score, issues)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
       [
         userId,
         authorName,
+        clientId,
         clientName.trim(),
         format,
         (title || "").trim(),
