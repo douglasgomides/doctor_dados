@@ -144,8 +144,9 @@ export default function ReunioesPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight font-heading">Validador de Reuniões</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Cole a transcrição do Meet depois da reunião e veja se ela cobriu o essencial —
-          mesmo quando você não estava nela.
+          Mentorias com médicos que já são clientes — não confundir com as calls de venda de{" "}
+          <span className="text-foreground/80">Comercial</span>. Cole a transcrição do Meet depois
+          da reunião e veja se ela cobriu o essencial, mesmo quando você não estava nela.
         </p>
       </div>
 

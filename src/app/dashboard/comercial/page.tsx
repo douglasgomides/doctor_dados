@@ -67,7 +67,9 @@ export default function ComercialPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight font-heading">Comercial</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Análise automática de calls comerciais, importadas da transcrição do Meet
+            Calls de venda com leads/prospects (ainda não são clientes) — diferente das mentorias
+            em <span className="text-foreground/80">Reuniões</span>. Análise automática, importada
+            da transcrição do Meet.
           </p>
         </div>
         <Link
