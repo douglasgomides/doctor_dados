@@ -38,10 +38,6 @@ import {
 import { STATUS_TIER_EMOJI } from "@/lib/status-tier";
 import { FeedItem, ReuniaoValidacaoRow, ConteudoValidacaoRow } from "@/types";
 
-const GOLD = "#D0A465";
-const HEADING_STYLE = { fontFamily: "var(--font-lora)" };
-const BODY_STYLE = { fontFamily: "var(--font-sora)" };
-
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", {
     day: "2-digit",
@@ -102,23 +98,20 @@ export default function VisaoGeralPage() {
   const conteudoReprovado = filtro(overview.alerts.conteudoReprovado);
 
   return (
-    <div
-      className="dark rounded-2xl border border-[#D0A465]/25 bg-[#0A0A0A] p-6 md:p-8 space-y-8"
-      style={BODY_STYLE}
-    >
+    <div className="space-y-6 max-w-6xl mx-auto">
       {/* Header + filtro de cliente */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2" style={HEADING_STYLE}>
-            <Sparkles className="h-5 w-5" style={{ color: GOLD }} />
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 font-heading">
+            <Sparkles className="h-5 w-5 text-primary" />
             Visão Geral
           </h1>
-          <p className="text-sm text-white/50 mt-0.5">
+          <p className="text-sm text-muted-foreground mt-0.5">
             Todos os clientes, sem precisar entrar em cada um
           </p>
         </div>
         <Select value={cliente} onValueChange={setCliente}>
-          <SelectTrigger className="w-full sm:w-[240px] !bg-white/5 !border-white/10 text-white">
+          <SelectTrigger className="w-full sm:w-[240px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -168,69 +161,57 @@ export default function VisaoGeralPage() {
 
       {/* Tabela de clientes */}
       <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-white/80 uppercase tracking-wider" style={HEADING_STYLE}>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider font-heading">
           Clientes
         </h2>
-        <div className="rounded-xl border border-white/10 overflow-hidden overflow-x-auto">
+        <div className="rounded-xl border border-border overflow-hidden overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="border-white/10 hover:bg-transparent">
-                <TableHead className="text-white/60">Cliente</TableHead>
-                <TableHead className="text-white/60">Última reunião</TableHead>
-                <TableHead className="text-white/60">Última entrega</TableHead>
-                <TableHead className="text-white/60">Riscos</TableHead>
-                <TableHead className="text-white/60 text-center">Ação</TableHead>
+              <TableRow>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Última reunião</TableHead>
+                <TableHead>Última entrega</TableHead>
+                <TableHead>Riscos</TableHead>
+                <TableHead className="text-center">Ação</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {clientesFiltrados.map((c) => (
-                <TableRow key={c.cliente} className="border-white/10 hover:bg-white/5">
-                  <TableCell className="font-medium text-white">{c.cliente}</TableCell>
-                  <TableCell className="text-white/70 text-sm">
+                <TableRow key={c.cliente}>
+                  <TableCell className="font-medium">{c.cliente}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
                     {c.ultimaReuniao ? (
                       <>
                         {STATUS_TIER_EMOJI[c.ultimaReuniao.statusTier]} {formatDate(c.ultimaReuniao.data)}
                       </>
                     ) : (
-                      <span className="text-white/30">sem registro</span>
+                      <span className="text-muted-foreground/50">sem registro</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-white/70 text-sm">
+                  <TableCell className="text-muted-foreground text-sm">
                     {c.ultimoConteudo ? (
                       <>
                         {STATUS_TIER_EMOJI[c.ultimoConteudo.statusTier]} {formatDate(c.ultimoConteudo.data)}
                       </>
                     ) : (
-                      <span className="text-white/30">sem registro</span>
+                      <span className="text-muted-foreground/50">sem registro</span>
                     )}
                   </TableCell>
                   <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={
-                        c.riscosAbertos > 0
-                          ? "!border-red-400/40 !text-red-300"
-                          : "!border-white/15 !text-white/50"
-                      }
-                    >
+                    <Badge variant={c.riscosAbertos > 0 ? "destructive" : "outline"}>
                       {c.riscosAbertos}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-center">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="!border-[#D0A465]/40 !text-[#D0A465] hover:!bg-[#D0A465]/10"
-                      onClick={() => setCliente(c.cliente)}
-                    >
+                    <Button variant="outline" size="sm" onClick={() => setCliente(c.cliente)}>
                       Ver perfil
                     </Button>
                   </TableCell>
                 </TableRow>
               ))}
               {clientesFiltrados.length === 0 && (
-                <TableRow className="border-white/10">
-                  <TableCell colSpan={5} className="text-center text-white/40 py-8">
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                     Nenhum cliente com validações registradas ainda.
                   </TableCell>
                 </TableRow>
@@ -242,7 +223,7 @@ export default function VisaoGeralPage() {
 
       {/* Feed cronológico */}
       <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-white/80 uppercase tracking-wider" style={HEADING_STYLE}>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider font-heading">
           Atividade recente
         </h2>
         <div className="space-y-2">
@@ -250,12 +231,9 @@ export default function VisaoGeralPage() {
             <button
               key={`${item.type}-${item.data.id}`}
               onClick={() => setDetalhe(item)}
-              className="w-full text-left flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] transition-colors p-4"
+              className="w-full text-left flex items-start gap-3 rounded-xl border border-border bg-card/40 hover:bg-card transition-colors p-4"
             >
-              <div
-                className="flex items-center justify-center h-8 w-8 rounded-lg shrink-0"
-                style={{ backgroundColor: `${GOLD}20`, color: GOLD }}
-              >
+              <div className="flex items-center justify-center h-8 w-8 rounded-lg shrink-0 bg-primary/15 text-primary">
                 {item.type === "reuniao" ? (
                   <Users2 className="h-4 w-4" />
                 ) : (
@@ -264,14 +242,16 @@ export default function VisaoGeralPage() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium text-white">{item.data.cliente}</span>
-                  <span className="text-xs text-white/40">
+                  <span className="text-sm font-medium">{item.data.cliente}</span>
+                  <span className="text-xs text-muted-foreground">
                     {item.type === "reuniao" ? "Reunião" : "Conteúdo"}
                   </span>
                   <span className="text-xs">{STATUS_TIER_EMOJI[item.data.statusTier]}</span>
-                  <span className="text-xs text-white/30 ml-auto">{formatDate(item.data.createdAt)}</span>
+                  <span className="text-xs text-muted-foreground/60 ml-auto">
+                    {formatDate(item.data.createdAt)}
+                  </span>
                 </div>
-                <p className="text-sm text-white/50 truncate mt-0.5">
+                <p className="text-sm text-muted-foreground truncate mt-0.5">
                   {item.type === "reuniao"
                     ? item.data.resumo || "Sem resumo."
                     : item.data.feedback || item.data.pecaNome || "Sem feedback."}
@@ -280,7 +260,7 @@ export default function VisaoGeralPage() {
             </button>
           ))}
           {feedFiltrado.length === 0 && (
-            <p className="text-center text-white/40 py-8 text-sm">
+            <p className="text-center text-muted-foreground py-8 text-sm">
               Nenhuma validação registrada ainda.
             </p>
           )}
@@ -289,7 +269,7 @@ export default function VisaoGeralPage() {
 
       {/* Dialog de detalhe */}
       <Dialog open={!!detalhe} onOpenChange={(open) => !open && setDetalhe(null)}>
-        <DialogContent className="dark max-w-2xl max-h-[85vh] overflow-y-auto !bg-[#0D0D0D] !border-[#D0A465]/20">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           {detalhe && detalhe.type === "reuniao" && (
             <ReuniaoDetalhe reuniao={detalhe.data} />
           )}
@@ -318,33 +298,34 @@ function AlertCard({
     <div
       className={
         "rounded-xl border p-5 space-y-3 " +
-        (isClear ? "border-white/10 bg-white/[0.02]" : "border-[#D0A465]/30 bg-[#D0A465]/[0.06]")
+        (isClear ? "border-border bg-card/40" : "border-primary/30 bg-primary/[0.06]")
       }
     >
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-white/70 text-xs font-medium uppercase tracking-wide">
-          <span style={{ color: isClear ? undefined : GOLD }}>{icon}</span>
+        <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium uppercase tracking-wide">
+          <span className={isClear ? undefined : "text-primary"}>{icon}</span>
           {title}
         </div>
         <span
-          className="text-2xl font-bold"
-          style={{ ...HEADING_STYLE, color: isClear ? "rgba(255,255,255,0.3)" : GOLD }}
+          className={
+            "text-2xl font-bold font-heading " + (isClear ? "text-muted-foreground/40" : "text-primary")
+          }
         >
           {count}
         </span>
       </div>
       {isClear ? (
-        <p className="text-sm text-white/30">Tudo certo por aqui.</p>
+        <p className="text-sm text-muted-foreground/50">Tudo certo por aqui.</p>
       ) : (
         <ul className="space-y-1.5">
           {items.slice(0, 3).map((item) => (
             <li key={item.key} className="text-sm">
-              <span className="text-white font-medium">{item.label}</span>{" "}
-              <span className="text-white/40">— {item.detail}</span>
+              <span className="font-medium">{item.label}</span>{" "}
+              <span className="text-muted-foreground">— {item.detail}</span>
             </li>
           ))}
           {items.length > 3 && (
-            <li className="text-xs text-white/30">+{items.length - 3} mais</li>
+            <li className="text-xs text-muted-foreground/50">+{items.length - 3} mais</li>
           )}
         </ul>
       )}
@@ -356,28 +337,28 @@ function ReuniaoDetalhe({ reuniao }: { reuniao: ReuniaoValidacaoRow }) {
   return (
     <>
       <DialogHeader>
-        <DialogTitle className="text-white" style={HEADING_STYLE}>
+        <DialogTitle className="font-heading">
           {reuniao.cliente} {STATUS_TIER_EMOJI[reuniao.statusTier]}
         </DialogTitle>
-        <DialogDescription className="text-white/50">
+        <DialogDescription>
           {reuniao.arquivoNome || "Reunião"} · {formatDate(reuniao.createdAt)} · status: {reuniao.status}
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-4 text-sm">
         {reuniao.resumo && (
           <div>
-            <p className="text-white/40 text-xs uppercase tracking-wide mb-1">Resumo</p>
-            <p className="text-white/80">{reuniao.resumo}</p>
+            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Resumo</p>
+            <p>{reuniao.resumo}</p>
           </div>
         )}
         {reuniao.compromissos.length > 0 && (
           <div>
-            <p className="text-white/40 text-xs uppercase tracking-wide mb-1">Compromissos</p>
+            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Compromissos</p>
             <ul className="space-y-1">
               {reuniao.compromissos.map((c, i) => (
-                <li key={i} className="text-white/80">
+                <li key={i}>
                   • {c.descricao}
-                  {c.responsavel && <span className="text-white/40"> ({c.responsavel})</span>}
+                  {c.responsavel && <span className="text-muted-foreground"> ({c.responsavel})</span>}
                 </li>
               ))}
             </ul>
@@ -385,15 +366,15 @@ function ReuniaoDetalhe({ reuniao }: { reuniao: ReuniaoValidacaoRow }) {
         )}
         {reuniao.riscos.length > 0 && (
           <div>
-            <p className="text-white/40 text-xs uppercase tracking-wide mb-1">Riscos</p>
+            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Riscos</p>
             <ul className="space-y-1">
               {reuniao.riscos.map((r, i) => (
-                <li key={i} className="text-white/80">
+                <li key={i}>
                   • {r.descricao}
                   {r.responsavel ? (
-                    <span className="text-white/40"> ({r.responsavel})</span>
+                    <span className="text-muted-foreground"> ({r.responsavel})</span>
                   ) : (
-                    <span className="text-red-300/70"> — sem responsável</span>
+                    <span className="text-destructive/80"> — sem responsável</span>
                   )}
                 </li>
               ))}
@@ -402,18 +383,18 @@ function ReuniaoDetalhe({ reuniao }: { reuniao: ReuniaoValidacaoRow }) {
         )}
         {reuniao.pautaProxima && (
           <div>
-            <p className="text-white/40 text-xs uppercase tracking-wide mb-1">
+            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">
               Pauta sugerida para a próxima
             </p>
-            <p className="text-white/80">{reuniao.pautaProxima}</p>
+            <p>{reuniao.pautaProxima}</p>
           </div>
         )}
         {reuniao.recapMensagem && (
           <div>
-            <p className="text-white/40 text-xs uppercase tracking-wide mb-1">
+            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">
               Recap (mensagem ao cliente)
             </p>
-            <p className="text-white/80 whitespace-pre-wrap">{reuniao.recapMensagem}</p>
+            <p className="whitespace-pre-wrap">{reuniao.recapMensagem}</p>
           </div>
         )}
       </div>
@@ -425,10 +406,10 @@ function ConteudoDetalhe({ conteudo }: { conteudo: ConteudoValidacaoRow }) {
   return (
     <>
       <DialogHeader>
-        <DialogTitle className="text-white" style={HEADING_STYLE}>
+        <DialogTitle className="font-heading">
           {conteudo.cliente} {STATUS_TIER_EMOJI[conteudo.statusTier]}
         </DialogTitle>
-        <DialogDescription className="text-white/50">
+        <DialogDescription>
           {conteudo.pecaNome || conteudo.tipo} · {formatDate(conteudo.createdAt)}
         </DialogDescription>
       </DialogHeader>
@@ -436,21 +417,21 @@ function ConteudoDetalhe({ conteudo }: { conteudo: ConteudoValidacaoRow }) {
         <div className="flex gap-4">
           {conteudo.statusTexto && (
             <div>
-              <p className="text-white/40 text-xs uppercase tracking-wide mb-1">Texto</p>
-              <p className="text-white/80">{conteudo.statusTexto}</p>
+              <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Texto</p>
+              <p>{conteudo.statusTexto}</p>
             </div>
           )}
           {conteudo.statusArte && (
             <div>
-              <p className="text-white/40 text-xs uppercase tracking-wide mb-1">Arte</p>
-              <p className="text-white/80">{conteudo.statusArte}</p>
+              <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Arte</p>
+              <p>{conteudo.statusArte}</p>
             </div>
           )}
         </div>
         {conteudo.feedback && (
           <div>
-            <p className="text-white/40 text-xs uppercase tracking-wide mb-1">Feedback</p>
-            <p className="text-white/80 whitespace-pre-wrap">{conteudo.feedback}</p>
+            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Feedback</p>
+            <p className="whitespace-pre-wrap">{conteudo.feedback}</p>
           </div>
         )}
       </div>

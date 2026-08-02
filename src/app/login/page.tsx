@@ -34,35 +34,37 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="dark min-h-screen flex items-center justify-center bg-[#050505] p-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative overflow-hidden">
       {/* Glow dourado de fundo */}
-      <div className="pointer-events-none absolute top-1/4 left-1/2 -translate-x-1/2 h-[420px] w-[620px] rounded-full bg-[#D4AF37]/15 blur-[120px]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(212,175,55,0.08),transparent_55%)]" />
+      <div className="pointer-events-none absolute top-1/4 left-1/2 -translate-x-1/2 h-[420px] w-[620px] rounded-full bg-primary/15 blur-[120px]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(208,164,101,0.08),transparent_55%)]" />
 
       <div className="w-full max-w-md space-y-8 relative">
         {/* Logo / Branding */}
         <div className="flex flex-col items-center space-y-3">
-          <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[#F0D97D] via-[#D4AF37] to-[#9C7A1E] shadow-[0_0_30px_-6px_rgba(212,175,55,0.6)]">
-            <span className="text-black font-bold text-xl tracking-tight">DC</span>
+          <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[#F0D97D] via-primary to-[#9C7A1E] shadow-[0_0_30px_-6px_rgba(208,164,101,0.6)]">
+            <span className="text-black font-bold text-xl tracking-tight font-heading">DC</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Doctor Creator Ops</h1>
-          <p className="text-sm text-[#D4AF37]/80">
-            Performance, roteiros e reuniões em um só lugar
+          <h1 className="text-2xl font-bold tracking-tight text-foreground font-heading">
+            Doctor Creator Ops
+          </h1>
+          <p className="text-sm text-primary/80">
+            Roteiros, reuniões e visão geral dos clientes em um só lugar
           </p>
         </div>
 
         {/* Card de Login */}
-        <Card className="border-[#D4AF37]/20 bg-[#0D0D0D]/90 backdrop-blur-sm shadow-[0_0_60px_-20px_rgba(212,175,55,0.35)]">
+        <Card className="border-primary/20 bg-card/90 backdrop-blur-sm shadow-[0_0_60px_-20px_rgba(208,164,101,0.35)]">
           <CardHeader className="space-y-1 pb-4">
-            <CardTitle className="text-xl text-white">Entrar na plataforma</CardTitle>
-            <CardDescription className="text-white/50">
+            <CardTitle className="text-xl text-foreground font-heading">Entrar na plataforma</CardTitle>
+            <CardDescription className="text-muted-foreground">
               Insira suas credenciais para acessar o painel
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-white/80">
+                <Label htmlFor="email" className="text-foreground/80">
                   E-mail
                 </Label>
                 <Input
@@ -73,12 +75,11 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   autoComplete="email"
-                  className="!bg-white/5 !border-white/10 text-white placeholder:text-white/30 focus-visible:!border-[#D4AF37] focus-visible:!ring-[#D4AF37]/30"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-white/80">
+                <Label htmlFor="password" className="text-foreground/80">
                   Senha
                 </Label>
                 <div className="relative">
@@ -90,13 +91,12 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     autoComplete="current-password"
-                    className="!bg-white/5 !border-white/10 text-white placeholder:text-white/30 focus-visible:!border-[#D4AF37] focus-visible:!ring-[#D4AF37]/30"
                   />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-white/50 hover:text-white hover:bg-white/10"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground"
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? (
@@ -109,14 +109,14 @@ export default function LoginPage() {
               </div>
 
               {error && (
-                <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+                <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
                   {error}
                 </div>
               )}
 
               <Button
                 type="submit"
-                className="w-full !bg-gradient-to-r !from-[#F0D97D] !via-[#D4AF37] !to-[#B8860B] !text-black font-semibold hover:opacity-90 transition-opacity"
+                className="w-full font-semibold"
                 disabled={loading}
               >
                 {loading ? (
@@ -132,7 +132,7 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-white/30">
+        <p className="text-center text-xs text-muted-foreground/70">
           Doctor Creator — acesso restrito à equipe interna
         </p>
       </div>

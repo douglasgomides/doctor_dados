@@ -87,7 +87,7 @@ export default function RoteirosPage() {
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Validador de Roteiros</h1>
+        <h1 className="text-2xl font-bold tracking-tight font-heading">Validador de Roteiros</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           Cole o roteiro de Reels, carrossel ou Stories antes de enviar e veja na hora o que
           precisa de ajuste.

@@ -99,7 +99,7 @@ export default function UsersPage() {
     <div className="space-y-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Gerenciar Usuários</h1>
+          <h1 className="text-2xl font-bold tracking-tight font-heading">Gerenciar Usuários</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Adicione, edite ou remova usuários e defina suas permissões
           </p>

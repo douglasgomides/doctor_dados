@@ -5,7 +5,6 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
 import {
-  BarChart3,
   Settings,
   LogOut,
   ChevronLeft,
@@ -65,18 +64,18 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "flex flex-col h-screen border-r border-border/50 bg-sidebar text-sidebar-foreground transition-all duration-300",
+        "flex flex-col h-screen border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-all duration-300",
         collapsed ? "w-[68px]" : "w-[260px]"
       )}
     >
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 h-16 border-b border-border/50">
-        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary text-primary-foreground shrink-0">
-          <BarChart3 className="h-5 w-5" />
+      <div className="flex items-center gap-3 px-4 h-16 border-b border-sidebar-border">
+        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-[#F0D97D] via-[#D0A465] to-[#9C7A1E] shrink-0">
+          <span className="text-black font-bold text-sm font-heading">DC</span>
         </div>
         {!collapsed && (
           <div className="flex flex-col min-w-0">
-            <span className="font-semibold text-sm truncate">Doctor Creator Ops</span>
+            <span className="font-semibold text-sm truncate font-heading">Doctor Creator Ops</span>
             <span className="text-[10px] text-muted-foreground truncate">
               Central da agência
             </span>
