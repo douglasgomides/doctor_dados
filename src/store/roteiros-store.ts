@@ -14,8 +14,16 @@ interface RoteirosState {
   }) => Promise<{ success: boolean; roteiro?: Roteiro; error?: string }>;
   reviewRoteiro: (
     id: string,
-    data: { status?: Roteiro["status"]; reviewNote?: string }
-  ) => Promise<void>;
+    data: {
+      status?: Roteiro["status"];
+      reviewNote?: string;
+      clientName?: string;
+      format?: RoteiroFormat;
+      title?: string;
+      content?: string;
+    }
+  ) => Promise<{ success: boolean; error?: string }>;
+  deleteRoteiro: (id: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const useRoteirosStore = create<RoteirosState>()((set) => ({
@@ -70,13 +78,29 @@ export const useRoteirosStore = create<RoteirosState>()((set) => ({
         body: JSON.stringify(data),
       });
       const result = await res.json();
-      if (result.roteiro) {
-        set((state) => ({
-          roteiros: state.roteiros.map((r) => (r.id === id ? result.roteiro : r)),
-        }));
+      if (!res.ok) {
+        return { success: false, error: result.error || "Erro ao editar roteiro." };
       }
-    } catch (error) {
-      console.error("Erro ao revisar roteiro:", error);
+      set((state) => ({
+        roteiros: state.roteiros.map((r) => (r.id === id ? result.roteiro : r)),
+      }));
+      return { success: true };
+    } catch {
+      return { success: false, error: "Erro de conexão com o servidor." };
+    }
+  },
+
+  deleteRoteiro: async (id) => {
+    try {
+      const res = await fetch(`/api/roteiros/${id}`, { method: "DELETE" });
+      const result = await res.json();
+      if (!res.ok) {
+        return { success: false, error: result.error || "Erro ao excluir roteiro." };
+      }
+      set((state) => ({ roteiros: state.roteiros.filter((r) => r.id !== id) }));
+      return { success: true };
+    } catch {
+      return { success: false, error: "Erro de conexão com o servidor." };
     }
   },
 }));

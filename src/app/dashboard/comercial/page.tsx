@@ -6,6 +6,7 @@ import { useComercialStore } from "@/store/comercial-store";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -29,7 +30,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { DialogFooter } from "@/components/ui/dialog";
 import {
   Briefcase,
   FileText,
@@ -39,6 +42,8 @@ import {
   ThumbsUp,
   Lightbulb,
   TrendingUp,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { ComercialAnalise, ComercialResultado, COMERCIAL_RESULTADO_LABELS } from "@/types";
 import Link from "next/link";
@@ -107,6 +112,11 @@ export default function ComercialPage() {
                     </TableCell>
                     <TableCell className="font-medium max-w-[220px] truncate">
                       {a.titulo || "Sem título"}
+                      {a.isTest && (
+                        <Badge variant="outline" className="ml-2 text-[10px] px-1.5 py-0 h-4">
+                          demo
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-[220px] truncate">
                       {a.participantes.join(", ")}
@@ -138,7 +148,9 @@ export default function ComercialPage() {
 
       <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          {selected && <ComercialDetalhe analise={selected} />}
+          {selected && (
+            <ComercialDetalhe analise={selected} onClose={() => setSelected(null)} />
+          )}
         </DialogContent>
       </Dialog>
     </div>
@@ -204,9 +216,112 @@ function ResultadoSelect({ analise, compact }: { analise: ComercialAnalise; comp
   );
 }
 
-function ComercialDetalhe({ analise }: { analise: ComercialAnalise }) {
+function ComercialDetalhe({
+  analise,
+  onClose,
+}: {
+  analise: ComercialAnalise;
+  onClose: () => void;
+}) {
+  const updateConteudo = useComercialStore((s) => s.updateConteudo);
+  const deleteAnalise = useComercialStore((s) => s.deleteAnalise);
   const errors = analise.issues.filter((i) => i.severity === "erro");
   const warnings = analise.issues.filter((i) => i.severity === "alerta");
+
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    titulo: analise.titulo,
+    participantes: analise.participantes.join(", "),
+    content: analise.content,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const startEdit = () => {
+    setEditForm({
+      titulo: analise.titulo,
+      participantes: analise.participantes.join(", "),
+      content: analise.content,
+    });
+    setError("");
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    if (!editForm.content.trim()) return;
+    setSaving(true);
+    setError("");
+    const result = await updateConteudo(analise.id, {
+      titulo: editForm.titulo,
+      participantes: editForm.participantes.split(",").map((p) => p.trim()).filter(Boolean),
+      content: editForm.content,
+    });
+    setSaving(false);
+    if (!result.success) {
+      setError(result.error || "Erro ao salvar edição.");
+      return;
+    }
+    setEditing(false);
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm("Excluir esta call comercial? Essa ação não pode ser desfeita.")) return;
+    const result = await deleteAnalise(analise.id);
+    if (result.success) {
+      onClose();
+    } else {
+      setError(result.error || "Erro ao excluir call comercial.");
+    }
+  };
+
+  if (editing) {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle className="font-heading">Editar call comercial</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Título</Label>
+            <Input
+              value={editForm.titulo}
+              onChange={(e) => setEditForm({ ...editForm, titulo: e.target.value })}
+              className="h-9"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Participantes (separados por vírgula)</Label>
+            <Input
+              value={editForm.participantes}
+              onChange={(e) => setEditForm({ ...editForm, participantes: e.target.value })}
+              className="h-9"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Transcrição</Label>
+            <Textarea
+              value={editForm.content}
+              onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
+              className="min-h-[220px]"
+            />
+          </div>
+          {error && (
+            <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
+              {error}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(false)} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSave} disabled={saving || !editForm.content.trim()}>
+              {saving ? "Revalidando..." : "Salvar e revalidar"}
+            </Button>
+          </DialogFooter>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -217,6 +332,11 @@ function ComercialDetalhe({ analise }: { analise: ComercialAnalise }) {
             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
           ) : (
             <XCircle className="h-4 w-4 text-destructive" />
+          )}
+          {analise.isTest && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+              demo
+            </Badge>
           )}
         </DialogTitle>
         <DialogDescription>
@@ -288,6 +408,23 @@ function ComercialDetalhe({ analise }: { analise: ComercialAnalise }) {
           <div className="rounded-md border border-border bg-muted/20 p-3 text-sm whitespace-pre-wrap max-h-60 overflow-y-auto">
             {analise.content}
           </div>
+        </div>
+
+        {error && (
+          <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={startEdit}>
+            <Pencil className="h-3.5 w-3.5 mr-1.5" />
+            Editar
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleDelete}>
+            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+            Excluir
+          </Button>
         </div>
       </div>
     </>
