@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { runMigrations } from "@/lib/db-migrations";
 
 // Esta rota provisiona o banco e o usuário admin inicial. Antes, qualquer
 // pessoa na internet podia chamá-la sem autenticação, e a senha do admin
@@ -8,6 +9,11 @@ import bcrypt from "bcryptjs";
 // desconhecido conseguia (re)criar um acesso master com credencial conhecida.
 // Agora exige um segredo de setup (DB_INIT_SECRET) e uma senha definida via
 // variável de ambiente (ADMIN_DEFAULT_PASSWORD), sem fallback fraco.
+//
+// Migrações de schema depois do setup inicial (colunas/tabelas novas) não
+// precisam mais passar por aqui — ver POST /api/admin/migrate, que roda a
+// mesma lista (src/lib/db-migrations.ts) protegida por sessão de master em
+// vez do segredo de setup.
 export async function POST(req: NextRequest) {
   try {
     const initSecret = process.env.DB_INIT_SECRET;
@@ -38,22 +44,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Cria tabela dash_users
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS dash_users (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        email VARCHAR(255) UNIQUE NOT NULL,
-        name VARCHAR(255) NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        role VARCHAR(20) NOT NULL DEFAULT 'client',
-        account_id VARCHAR(100) NOT NULL DEFAULT '',
-        account_name VARCHAR(255) NOT NULL DEFAULT '',
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
+    await runMigrations();
 
-    // Verifica se já existe admin
     const existing = await pool.query(
       "SELECT id FROM dash_users WHERE email = $1",
       ["admin@dashboard.com"]
@@ -67,145 +59,6 @@ export async function POST(req: NextRequest) {
         ["admin@dashboard.com", "Admin Master", hashedPassword, "master"]
       );
     }
-
-    // Cria tabela roteiros (validador de qualidade de Reels/carrossel/Stories)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS roteiros (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        author_id UUID NOT NULL REFERENCES dash_users(id) ON DELETE CASCADE,
-        author_name VARCHAR(255) NOT NULL,
-        client_name VARCHAR(255) NOT NULL,
-        format VARCHAR(20) NOT NULL,
-        title VARCHAR(255) NOT NULL DEFAULT '',
-        content TEXT NOT NULL,
-        status VARCHAR(20) NOT NULL,
-        score INTEGER NOT NULL,
-        issues JSONB NOT NULL DEFAULT '[]',
-        review_note TEXT,
-        reviewed_by_name VARCHAR(255),
-        reviewed_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    // Cria tabela reunioes (validador de qualidade de reuniões de mentoria)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS reunioes (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        author_id UUID NOT NULL REFERENCES dash_users(id) ON DELETE CASCADE,
-        author_name VARCHAR(255) NOT NULL,
-        client_name VARCHAR(255) NOT NULL,
-        tipo VARCHAR(20) NOT NULL,
-        content TEXT NOT NULL,
-        status VARCHAR(20) NOT NULL,
-        score INTEGER NOT NULL,
-        issues JSONB NOT NULL DEFAULT '[]',
-        suggested_agenda JSONB NOT NULL DEFAULT '[]',
-        review_note TEXT,
-        reviewed_by_name VARCHAR(255),
-        reviewed_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    // Cria tabela clientes (médicos atendidos pela agência), com um
-    // responsável da equipe e metas de cadência — base para automatizar
-    // cobrança/follow-up mais pra frente.
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS clientes (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        nome VARCHAR(255) UNIQUE NOT NULL,
-        responsavel_id UUID REFERENCES dash_users(id) ON DELETE SET NULL,
-        telefone_whatsapp VARCHAR(30),
-        roteiros_por_semana INTEGER,
-        reunioes_por_mes INTEGER,
-        ativo BOOLEAN NOT NULL DEFAULT true,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    // Liga roteiros/reunioes ao cadastro de clientes (preenchido
-    // automaticamente na hora do envio — ver /api/roteiros e /api/reunioes).
-    await pool.query(`
-      ALTER TABLE roteiros
-      ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clientes(id) ON DELETE SET NULL;
-    `);
-    await pool.query(`
-      ALTER TABLE reunioes
-      ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clientes(id) ON DELETE SET NULL;
-    `);
-
-    // WhatsApp do membro da equipe — destino dos avisos automáticos de
-    // pendência/cadência (ver /api/automations/alerts).
-    await pool.query(`
-      ALTER TABLE dash_users
-      ADD COLUMN IF NOT EXISTS telefone_whatsapp VARCHAR(30);
-    `);
-
-    // Ideias de conteúdo sugeridas pela IA a partir da transcrição da
-    // reunião (ver src/lib/reuniao-validator.ts).
-    await pool.query(`
-      ALTER TABLE reunioes
-      ADD COLUMN IF NOT EXISTS suggested_content_ideas JSONB NOT NULL DEFAULT '[]';
-    `);
-
-    // Análise de qualidade de calls comerciais, importadas automaticamente
-    // da transcrição do Meet (ver /api/automations/comercial).
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS comercial_analises (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        titulo VARCHAR(500) NOT NULL DEFAULT '',
-        participantes JSONB NOT NULL DEFAULT '[]',
-        content TEXT NOT NULL,
-        status VARCHAR(20) NOT NULL,
-        score INTEGER NOT NULL,
-        issues JSONB NOT NULL DEFAULT '[]',
-        pontos_fortes JSONB NOT NULL DEFAULT '[]',
-        pontos_melhoria JSONB NOT NULL DEFAULT '[]',
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    // Resultado real do negócio pra cada call comercial (fechou/não fechou/
-    // em negociação) + valor, pra cruzar nota de qualidade da IA com
-    // conversão de verdade (ver /api/comercial/[id]).
-    await pool.query(`
-      ALTER TABLE comercial_analises
-      ADD COLUMN IF NOT EXISTS resultado VARCHAR(20);
-    `);
-    await pool.query(`
-      ALTER TABLE comercial_analises
-      ADD COLUMN IF NOT EXISTS valor_fechado NUMERIC;
-    `);
-
-    // Marca registros gerados pelo botão "Gerar dados de exemplo" (ver
-    // /api/admin/seed-exemplos/*), pra separar de forma confiável dados de
-    // demonstração dos dados reais — Visão Geral e Performance excluem
-    // is_test=true das métricas agregadas por padrão.
-    await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;`);
-    await pool.query(`ALTER TABLE roteiros ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;`);
-    await pool.query(`ALTER TABLE reunioes ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;`);
-    await pool.query(`ALTER TABLE comercial_analises ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;`);
-
-    // Segmentação do cadastro de cliente, pra permitir agrupar/priorizar
-    // (ver /dashboard/clientes).
-    await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS especialidade VARCHAR(255);`);
-    await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS cidade VARCHAR(255);`);
-    await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS plano VARCHAR(255);`);
-
-    // Itens de follow-up extraídos automaticamente das dailies internas
-    // (ver /api/automations/dailies) — registro próprio além das tarefas
-    // já criadas no ClickUp pelo n8n, pra manter histórico/auditoria aqui.
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS daily_tarefas (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        titulo VARCHAR(500) NOT NULL DEFAULT '',
-        participantes JSONB NOT NULL DEFAULT '[]',
-        itens JSONB NOT NULL DEFAULT '[]',
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
 
     return NextResponse.json({ success: true, message: "Banco inicializado com sucesso." });
   } catch (error) {
