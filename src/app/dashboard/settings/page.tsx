@@ -7,12 +7,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { User, Sparkles, Loader2 } from "lucide-react";
+import { User, Sparkles, Loader2, Database } from "lucide-react";
 
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user);
-  const [loading, setLoading] = useState<"gerar" | "remover" | null>(null);
+  const [loading, setLoading] = useState<"gerar" | "remover" | "migrar" | null>(null);
   const [feedback, setFeedback] = useState<{ type: "sucesso" | "erro"; texto: string } | null>(null);
+
+  async function atualizarBanco() {
+    setLoading("migrar");
+    setFeedback(null);
+    try {
+      const res = await fetch("/api/admin/migrate", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao atualizar banco de dados.");
+      setFeedback({ type: "sucesso", texto: "Banco de dados atualizado com as últimas mudanças." });
+    } catch (error) {
+      setFeedback({ type: "erro", texto: error instanceof Error ? error.message : "Erro inesperado." });
+    } finally {
+      setLoading(null);
+    }
+  }
 
   async function gerarExemplos() {
     setLoading("gerar");
@@ -142,6 +157,41 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {user?.role === "master" && (
+        <Card className="border-border/50">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Database className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-base">Banco de dados</CardTitle>
+            </div>
+            <CardDescription>
+              Aplica colunas e tabelas novas no banco de produção. Rode isso sempre que eu avisar
+              que uma mudança de código precisa ser aplicada ao banco (substitui o antigo comando
+              via terminal).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button onClick={atualizarBanco} disabled={loading !== null} className="h-9">
+              {loading === "migrar" ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Database className="h-4 w-4 mr-2" />
+              )}
+              Atualizar banco de dados
+            </Button>
+            {feedback && (
+              <p
+                className={`text-sm ${
+                  feedback.type === "sucesso" ? "text-primary" : "text-destructive"
+                }`}
+              >
+                {feedback.texto}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {user?.role === "master" && (
         <Card className="border-border/50">
