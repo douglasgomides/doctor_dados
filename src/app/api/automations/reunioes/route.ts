@@ -15,13 +15,39 @@ import { ReuniaoTipo } from "@/types";
 // reunião (dailies internas, comercial, reuniões com médico). Este endpoint
 // casa os participantes com o cadastro de clientes ativos: 0 clientes
 // batidos = não é reunião de cliente, retorna "skipped" (200, não é erro) e
-// não grava nada; 1 cliente = mentoria 1:1 normal; 2+ clientes = reunião em
-// grupo, gravada com client_id nulo (não tem "o" cliente) e vinculada a
-// todos os clientes envolvidos via reuniao_clientes, pra aparecer no
-// histórico de cada um.
+// não grava nada; 2+ clientes = reunião em grupo (tipo sempre "grupo"),
+// gravada com client_id nulo (não tem "o" cliente) e vinculada a todos os
+// clientes envolvidos via reuniao_clientes, pra aparecer no histórico de
+// cada um. Com 1 cliente só, o tipo (mentoria/onboarding/pontual) é
+// inferido do nome do arquivo salvo pelo Meet — por isso o padrão de
+// nomear a transcrição com a palavra certa (ex: "Onboarding - Dra. Fulana",
+// "Pontual - Dr. Beltrano") importa tanto quanto nomear "Comercial"/"Daily".
 
 const SYSTEM_AUTHOR_EMAIL = "automacao.meet@doctorcreator.internal";
 const DEFAULT_TIPO: ReuniaoTipo = "mentoria";
+
+// Faixa Unicode dos diacríticos combináveis, montada por código de
+// caractere (não por glifo) — mesmo motivo do lib/clientes.ts.
+const DIACRITICOS_RE = new RegExp(
+  `[${String.fromCharCode(0x0300)}-${String.fromCharCode(0x036f)}]`,
+  "g"
+);
+
+function semAcento(s: string): string {
+  return s.normalize("NFD").replace(DIACRITICOS_RE, "").toLowerCase();
+}
+
+// O nome do arquivo salvo pelo Meet é o único sinal disponível pra saber o
+// tipo da reunião com um cliente único — mesma lógica de título já usada
+// pelo workflow do n8n pra separar comercial/daily. Se o título não trouxer
+// nenhuma palavra-chave reconhecida, cai no padrão (mentoria).
+function inferirTipoPeloTitulo(titulo: string): ReuniaoTipo | null {
+  const t = semAcento(titulo || "");
+  if (t.includes("onboarding")) return "onboarding";
+  if (t.includes("pontual") || t.includes("emergencial") || t.includes("urgente")) return "pontual";
+  if (t.includes("mentoria")) return "mentoria";
+  return null;
+}
 
 async function getOrCreateSystemAuthorId(): Promise<{ id: string; name: string }> {
   const existing = await pool.query(
@@ -57,7 +83,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
     }
 
-    const { titulo, participantes, transcricao, tipo } = await req.json();
+    const { titulo, participantes, transcricao } = await req.json();
 
     if (!Array.isArray(participantes) || participantes.length === 0) {
       return NextResponse.json(
@@ -82,9 +108,7 @@ export async function POST(req: NextRequest) {
     const isGrupo = clientes.length > 1;
     const tipoFinal: ReuniaoTipo = isGrupo
       ? "grupo"
-      : tipo === "onboarding" || tipo === "pontual"
-        ? tipo
-        : DEFAULT_TIPO;
+      : inferirTipoPeloTitulo(titulo) ?? DEFAULT_TIPO;
     const clientIdFinal = isGrupo ? null : clientes[0].id;
     const clientNameFinal = isGrupo ? clientes.map((c) => c.nome).join(" + ") : clientes[0].nome;
 
