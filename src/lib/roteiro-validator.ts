@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { RoteiroFormat, RoteiroValidation } from "@/types";
-import { callClaudeTool } from "./ai-client";
+import { callClaudeTool, statusFromIssues, clampScore } from "./ai-client";
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
@@ -73,11 +73,9 @@ export async function validateRoteiro(
     schema: ROTEIRO_SCHEMA,
   });
 
-  const score = Math.max(0, Math.min(100, Math.round(result.score)));
-
   return {
-    status: result.status,
-    score,
+    status: statusFromIssues(result.issues),
+    score: clampScore(result.score),
     issues: result.issues,
     wordCount,
     readingTimeSeconds,

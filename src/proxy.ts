@@ -56,6 +56,7 @@ export async function proxy(req: NextRequest) {
     forwardedHeaders.set("x-session-user-id", session.sub);
     forwardedHeaders.set("x-session-name", session.name);
     forwardedHeaders.set("x-session-role", session.role);
+    forwardedHeaders.set("x-session-version", String(session.sv));
     return NextResponse.next({ request: { headers: forwardedHeaders } });
   }
 

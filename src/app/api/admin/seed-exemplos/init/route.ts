@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { findOrCreateClienteId } from "@/lib/clientes";
 import { EXAMPLE_AUTHORS, EXAMPLE_CLIENT_NAMES, getOrCreateExampleAuthor } from "@/lib/seed-exemplos-data";
+import { requireFreshMasterSession } from "@/lib/session-guard";
 
 // Passo 1 da geração de dados de exemplo: cria/garante os 3 autores e os 5
 // clientes fictícios (sem nenhuma chamada de IA, então é rápido). A tela de
@@ -10,8 +11,11 @@ import { EXAMPLE_AUTHORS, EXAMPLE_CLIENT_NAMES, getOrCreateExampleAuthor } from 
 // delas é uma função serverless própria, então nenhuma fica esperando as
 // outras nem soma tempo de execução.
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
+    const denied = await requireFreshMasterSession(req);
+    if (denied) return denied;
+
     const authors = await Promise.all([0, 1, 2].map((i) => getOrCreateExampleAuthor(i)));
     const clientIds = await Promise.all(
       EXAMPLE_CLIENT_NAMES.map((nome) => findOrCreateClienteId(nome))

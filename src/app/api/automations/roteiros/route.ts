@@ -16,6 +16,11 @@ import { RoteiroFormat } from "@/types";
 // (roteiro pronto, aguardando aprovação) — o n8n consulta esse status e
 // manda o `script` pra cá pra validar automaticamente, em vez do
 // colaborador colar manualmente em Roteiros.
+//
+// Idempotente por `contentId`: se o gatilho do Calendário disparar mais de
+// uma vez pro mesmo item (reenvio, retry), o índice único em content_id
+// (ver db-migrations.ts) faz o INSERT duplicado virar "skipped" em vez de
+// criar um roteiro repetido.
 
 const SYSTEM_AUTHOR_EMAIL = "automacao.calendario@doctorcreator.internal";
 const SYSTEM_AUTHOR_NAME = "Automação (Calendário)";
@@ -119,8 +124,9 @@ export async function POST(req: NextRequest) {
     const clientId = await findOrCreateClienteId(doctorName);
 
     const result = await pool.query(
-      `INSERT INTO roteiros (author_id, author_name, client_id, client_name, format, title, content, status, score, issues)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      `INSERT INTO roteiros (author_id, author_name, client_id, client_name, format, title, content, status, score, issues, content_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (content_id) WHERE content_id IS NOT NULL DO NOTHING
        RETURNING id`,
       [
         author.id,
@@ -133,8 +139,17 @@ export async function POST(req: NextRequest) {
         validation.status,
         validation.score,
         JSON.stringify(validation.issues),
+        contentId || null,
       ]
     );
+
+    if (result.rows.length === 0) {
+      return NextResponse.json({
+        skipped: true,
+        reason: "Este item do Calendário já foi importado antes (contentId duplicado).",
+        contentId: contentId || null,
+      });
+    }
 
     return NextResponse.json({
       skipped: false,

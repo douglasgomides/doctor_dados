@@ -51,3 +51,22 @@ export async function callClaudeTool<T>(params: {
   }
   return toolUse.input as T;
 }
+
+export interface ValidatorIssue {
+  severity: "erro" | "alerta";
+  rule: string;
+  message: string;
+}
+
+// status e issues vêm do mesmo tool-call da IA como campos independentes —
+// nada garante que o modelo preencha os dois de forma coerente entre si
+// (ex: status "aprovado" com uma issue severity "erro" junto). Recalcular
+// aqui, a partir das próprias issues, garante que o badge visual (ver
+// lib/status-tier.ts) nunca minta sobre um erro que a IA já detectou.
+export function statusFromIssues(issues: ValidatorIssue[]): "aprovado" | "ajustar" {
+  return issues.some((i) => i.severity === "erro") ? "ajustar" : "aprovado";
+}
+
+export function clampScore(score: number): number {
+  return Math.max(0, Math.min(100, Math.round(score)));
+}

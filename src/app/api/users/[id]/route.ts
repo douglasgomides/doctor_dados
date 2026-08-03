@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { requireFreshMasterSession } from "@/lib/session-guard";
 
 // Autenticação e restrição a papel "master" são impostas pelo middleware
-// (src/proxy.ts) para todo o prefixo /api/users.
+// (src/proxy.ts) para todo o prefixo /api/users. requireFreshMasterSession
+// é uma segunda camada específica desta rota — ver o comentário no arquivo
+// dela.
 
 const VALID_ROLES = new Set(["master", "team"]);
 
@@ -13,6 +16,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const denied = await requireFreshMasterSession(req);
+    if (denied) return denied;
+
     const { id } = await params;
     const data = await req.json();
 
@@ -39,13 +45,22 @@ export async function PUT(
       fields.push(`name = $${paramIndex++}`);
       values.push(data.name);
     }
+    // Troca de senha ou de papel invalida qualquer sessão já aberta dessa
+    // pessoa — sem isso, alguém rebaixado de master continuaria com acesso
+    // master até o cookie expirar (ver src/lib/session-guard.ts).
+    let invalidarSessao = false;
     if (data.password) {
       fields.push(`password = $${paramIndex++}`);
       values.push(await bcrypt.hash(data.password, 10));
+      invalidarSessao = true;
     }
     if (data.role !== undefined) {
       fields.push(`role = $${paramIndex++}`);
       values.push(data.role);
+      invalidarSessao = true;
+    }
+    if (invalidarSessao) {
+      fields.push(`session_version = session_version + 1`);
     }
     if (data.telefoneWhatsapp !== undefined) {
       fields.push(`telefone_whatsapp = $${paramIndex++}`);
@@ -86,10 +101,13 @@ export async function PUT(
 
 // DELETE - Remove usuário
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const denied = await requireFreshMasterSession(req);
+    if (denied) return denied;
+
     const { id } = await params;
 
     const result = await pool.query(

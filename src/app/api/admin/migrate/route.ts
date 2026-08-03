@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { runMigrations } from "@/lib/db-migrations";
+import { requireFreshMasterSession } from "@/lib/session-guard";
 
 // Roda as migrações de schema (tabelas/colunas novas) sem precisar do
 // DB_INIT_SECRET — protegido por sessão de master (ver /api/admin no
@@ -7,8 +8,11 @@ import { runMigrations } from "@/lib/db-migrations";
 // toda vez que o código adiciona uma coluna nova; um botão em
 // Configurações chama isso.
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
+    const denied = await requireFreshMasterSession(req);
+    if (denied) return denied;
+
     await runMigrations();
     return NextResponse.json({ success: true });
   } catch (error) {

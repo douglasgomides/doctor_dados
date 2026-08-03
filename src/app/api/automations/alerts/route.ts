@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
          FROM roteiros r
          LEFT JOIN clientes c ON c.id = r.client_id
          LEFT JOIN dash_users u ON u.id = c.responsavel_id
-         WHERE r.status = 'ajustar'
+         WHERE r.status = 'ajustar' AND r.is_test = false
          ORDER BY r.created_at DESC
          LIMIT $1`,
         [PENDING_LIMIT]
@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
          FROM reunioes re
          LEFT JOIN clientes c ON c.id = re.client_id
          LEFT JOIN dash_users u ON u.id = c.responsavel_id
-         WHERE re.status = 'ajustar'
+         WHERE re.status = 'ajustar' AND re.is_test = false
          ORDER BY re.created_at DESC
          LIMIT $1`,
         [PENDING_LIMIT]
@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
       pool.query(
         `SELECT id, titulo, participantes, score, created_at
          FROM comercial_analises
-         WHERE status = 'ajustar'
+         WHERE status = 'ajustar' AND is_test = false
          ORDER BY created_at DESC
          LIMIT $1`,
         [PENDING_LIMIT]
@@ -109,18 +109,20 @@ export async function GET(req: NextRequest) {
         `SELECT c.nome, c.roteiros_por_semana, c.reunioes_por_mes,
                 u.name AS responsavel_name, u.telefone_whatsapp AS responsavel_whatsapp,
                 (SELECT COUNT(*) FROM roteiros r
-                 WHERE r.client_id = c.id AND r.created_at > NOW() - INTERVAL '7 days') AS roteiros_semana,
+                 WHERE r.client_id = c.id AND r.is_test = false
+                   AND r.created_at > NOW() - INTERVAL '7 days') AS roteiros_semana,
                 (SELECT COUNT(DISTINCT combined.id) FROM (
-                   SELECT re.id, re.created_at FROM reunioes re WHERE re.client_id = c.id
+                   SELECT re.id, re.created_at FROM reunioes re
+                   WHERE re.client_id = c.id AND re.is_test = false
                    UNION
                    SELECT re2.id, re2.created_at FROM reunioes re2
                    JOIN reuniao_clientes rc ON rc.reuniao_id = re2.id
-                   WHERE rc.cliente_id = c.id
+                   WHERE rc.cliente_id = c.id AND re2.is_test = false
                  ) AS combined
                  WHERE combined.created_at > NOW() - INTERVAL '30 days') AS reunioes_mes
          FROM clientes c
          LEFT JOIN dash_users u ON u.id = c.responsavel_id
-         WHERE c.ativo = true`
+         WHERE c.ativo = true AND c.is_test = false`
       ),
     ]);
 

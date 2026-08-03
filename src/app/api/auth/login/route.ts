@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
       email: safeUser.email,
       name: safeUser.name,
       role: safeUser.role,
+      sv: user.session_version ?? 0,
     });
 
     const response = NextResponse.json({ success: true, user: safeUser });

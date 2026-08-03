@@ -6,6 +6,7 @@ import {
   ROTEIRO_REEL_BOM,
   ROTEIRO_CARROSSEL_AJUSTAR,
 } from "@/lib/seed-exemplos-data";
+import { requireFreshMasterSession } from "@/lib/session-guard";
 
 export const maxDuration = 30;
 
@@ -24,6 +25,9 @@ const VARIANTS = {
 
 export async function POST(req: NextRequest) {
   try {
+    const denied = await requireFreshMasterSession(req);
+    if (denied) return denied;
+
     const { which, authorId, authorName, clientId, clientName } = await req.json();
     const variant = VARIANTS[which as keyof typeof VARIANTS];
     if (!variant || !authorId || !authorName || !clientId || !clientName) {
