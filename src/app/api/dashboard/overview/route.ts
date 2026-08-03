@@ -59,7 +59,7 @@ function mapReuniaoRow(row: any): Reuniao {
 
 export async function GET() {
   try {
-    const [roteirosResult, reunioesResult, clientesResult] = await Promise.all([
+    const [roteirosResult, reunioesResult, clientesResult, reuniaoClientesResult] = await Promise.all([
       pool.query(`SELECT * FROM roteiros WHERE is_test = false ORDER BY created_at DESC LIMIT $1`, [
         ROW_LIMIT,
       ]),
@@ -71,6 +71,9 @@ export async function GET() {
          FROM clientes c
          LEFT JOIN dash_users u ON u.id = c.responsavel_id`
       ),
+      // Reunião em grupo não tem "o" cliente (client_id nulo) — essa tabela
+      // de junção é a única forma de saber a quais clientes ela pertence.
+      pool.query(`SELECT reuniao_id, cliente_nome FROM reuniao_clientes`),
     ]);
 
     const roteiros = roteirosResult.rows.map(mapRoteiroRow);
@@ -80,6 +83,20 @@ export async function GET() {
       clientesResult.rows.map((row) => [row.nome.toLowerCase(), row.responsavel_name])
     );
 
+    const clientesPorReuniaoId = new Map<string, string[]>();
+    for (const row of reuniaoClientesResult.rows) {
+      const lista = clientesPorReuniaoId.get(row.reuniao_id) || [];
+      lista.push(row.cliente_nome);
+      clientesPorReuniaoId.set(row.reuniao_id, lista);
+    }
+    // Nomes de cliente que uma reunião cobre: o próprio client_name pra
+    // reunião 1:1 (client_id preenchido), ou todos os nomes da tabela de
+    // junção pra reunião em grupo (client_id nulo).
+    function clientesDaReuniao(r: Reuniao): string[] {
+      if (r.clientId) return [r.clientName];
+      return clientesPorReuniaoId.get(r.id) || [];
+    }
+
     // Ambas as listas já vêm ordenadas por created_at DESC, então o primeiro
     // roteiro/reunião visto por cliente é o mais recente.
     const latestRoteiroByCliente = new Map<string, Roteiro>();
@@ -88,13 +105,22 @@ export async function GET() {
     }
     const latestReuniaoByCliente = new Map<string, Reuniao>();
     for (const r of reunioes) {
-      if (!latestReuniaoByCliente.has(r.clientName)) latestReuniaoByCliente.set(r.clientName, r);
+      for (const cliente of clientesDaReuniao(r)) {
+        if (!latestReuniaoByCliente.has(cliente)) latestReuniaoByCliente.set(cliente, r);
+      }
     }
 
     const pendentesPorCliente = new Map<string, number>();
-    for (const r of [...roteiros, ...reunioes]) {
+    for (const r of roteiros) {
       if (r.status === "ajustar") {
         pendentesPorCliente.set(r.clientName, (pendentesPorCliente.get(r.clientName) || 0) + 1);
+      }
+    }
+    for (const r of reunioes) {
+      if (r.status === "ajustar") {
+        for (const cliente of clientesDaReuniao(r)) {
+          pendentesPorCliente.set(cliente, (pendentesPorCliente.get(cliente) || 0) + 1);
+        }
       }
     }
 

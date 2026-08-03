@@ -114,8 +114,14 @@ export async function POST(req: NextRequest) {
         JSON.stringify(validation.suggestedContentIdeas),
       ]
     );
+    const reuniao = result.rows[0];
 
-    return NextResponse.json({ reuniao: mapRow(result.rows[0]) });
+    await pool.query(
+      `INSERT INTO reuniao_clientes (reuniao_id, cliente_id, cliente_nome) VALUES ($1, $2, $3)`,
+      [reuniao.id, clientId, clientName.trim()]
+    );
+
+    return NextResponse.json({ reuniao: mapRow(reuniao) });
   } catch (error) {
     console.error("Erro ao validar reunião:", error);
     return NextResponse.json({ error: "Erro ao validar reunião." }, { status: 500 });
