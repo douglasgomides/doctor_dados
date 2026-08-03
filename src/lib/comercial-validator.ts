@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ComercialIssue, ComercialStatus } from "@/types";
-import { callClaudeTool } from "./ai-client";
+import { callClaudeTool, statusFromIssues, clampScore } from "./ai-client";
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
@@ -91,8 +91,8 @@ export async function validateComercial(content: string): Promise<ComercialValid
   });
 
   return {
-    status: result.status,
-    score: Math.max(0, Math.min(100, Math.round(result.score))),
+    status: statusFromIssues(result.issues),
+    score: clampScore(result.score),
     issues: result.issues,
     pontosFortes: result.pontosFortes,
     pontosMelhoria: result.pontosMelhoria,

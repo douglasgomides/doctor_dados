@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { validateReuniao } from "@/lib/reuniao-validator";
 import { REUNIAO_MENTORIA_BOA, REUNIAO_MENTORIA_AJUSTAR } from "@/lib/seed-exemplos-data";
+import { requireFreshMasterSession } from "@/lib/session-guard";
 
 export const maxDuration = 30;
 
@@ -12,6 +13,9 @@ const VARIANTS = {
 
 export async function POST(req: NextRequest) {
   try {
+    const denied = await requireFreshMasterSession(req);
+    if (denied) return denied;
+
     const { which, authorId, authorName, clientId, clientName } = await req.json();
     const content = VARIANTS[which as keyof typeof VARIANTS];
     if (!content || !authorId || !authorName || !clientId || !clientName) {

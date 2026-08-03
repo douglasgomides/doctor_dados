@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { requireFreshMasterSession } from "@/lib/session-guard";
 
 // Autenticação e restrição a papel "master" são impostas pelo middleware
-// (src/proxy.ts) para todo o prefixo /api/users.
+// (src/proxy.ts) para todo o prefixo /api/users. requireFreshMasterSession
+// é uma segunda camada específica desta rota — ver o comentário no arquivo
+// dela.
 
 const VALID_ROLES = new Set(["master", "team"]);
 
 // GET - Lista todos os usuários
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const denied = await requireFreshMasterSession(req);
+    if (denied) return denied;
+
     const result = await pool.query(
       "SELECT id, email, name, role, telefone_whatsapp FROM dash_users ORDER BY created_at"
     );
@@ -35,6 +41,9 @@ export async function GET() {
 // POST - Cria novo usuário
 export async function POST(req: NextRequest) {
   try {
+    const denied = await requireFreshMasterSession(req);
+    if (denied) return denied;
+
     const { email, name, password, role, telefoneWhatsapp } = await req.json();
 
     if (!email || !name) {

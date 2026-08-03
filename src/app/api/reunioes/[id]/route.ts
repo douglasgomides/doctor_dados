@@ -107,10 +107,11 @@ export async function PATCH(
       values.push(status);
     }
 
+    let novoClienteId: string | null = null;
     if (clientName !== undefined && clientName.trim() && clientName.trim() !== row.client_name) {
-      const clientId = await findOrCreateClienteId(clientName);
+      novoClienteId = await findOrCreateClienteId(clientName);
       fields.push(`client_id = $${paramIndex++}`);
-      values.push(clientId);
+      values.push(novoClienteId);
       fields.push(`client_name = $${paramIndex++}`);
       values.push(clientName.trim());
     }
@@ -134,8 +135,23 @@ export async function PATCH(
       `UPDATE reunioes SET ${fields.join(", ")} WHERE id = $${paramIndex} RETURNING *`,
       values
     );
+    const reuniao = result.rows[0];
 
-    return NextResponse.json({ reuniao: mapRow(result.rows[0]) });
+    // O formulário de edição só tem um campo de texto pra cliente — trocar
+    // o nome aqui sempre resolve pra 1 cliente só, mesmo que a reunião
+    // tivesse vindo da automação como reunião em grupo (vários clientes na
+    // tabela de junção). Resincroniza reuniao_clientes com o que ficou
+    // gravado em client_id, senão a tabela de junção fica com os clientes
+    // antigos e a reunião continua aparecendo no histórico deles.
+    if (novoClienteId) {
+      await pool.query(`DELETE FROM reuniao_clientes WHERE reuniao_id = $1`, [id]);
+      await pool.query(
+        `INSERT INTO reuniao_clientes (reuniao_id, cliente_id, cliente_nome) VALUES ($1, $2, $3)`,
+        [id, novoClienteId, reuniao.client_name]
+      );
+    }
+
+    return NextResponse.json({ reuniao: mapRow(reuniao) });
   } catch (error) {
     console.error("Erro ao editar reunião:", error);
     return NextResponse.json({ error: "Erro ao editar reunião." }, { status: 500 });

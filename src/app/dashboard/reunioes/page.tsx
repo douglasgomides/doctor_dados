@@ -45,7 +45,12 @@ import {
 } from "lucide-react";
 import { Reuniao, ReuniaoTipo, REUNIAO_TIPO_LABELS, ROTEIRO_FORMAT_LABELS } from "@/types";
 
-const TIPO_OPTIONS: ReuniaoTipo[] = ["mentoria", "grupo", "onboarding", "pontual"];
+// "grupo" fica de fora das opções do formulário (criação e edição): o campo
+// de cliente aqui é um texto único, então não tem como representar vários
+// médicos na mesma reunião manualmente — reunião em grupo só é criada pela
+// importação automática do Meet, que vincula todos os clientes envolvidos
+// via a tabela de junção reuniao_clientes.
+const TIPO_OPTIONS: ReuniaoTipo[] = ["mentoria", "onboarding", "pontual"];
 
 export default function ReunioesPage() {
   const user = useAuthStore((s) => s.user);
@@ -323,6 +328,11 @@ export default function ReunioesPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
+                          {editForm.tipo === "grupo" && (
+                            <SelectItem value="grupo" disabled>
+                              {REUNIAO_TIPO_LABELS.grupo} (automático)
+                            </SelectItem>
+                          )}
                           {TIPO_OPTIONS.map((t) => (
                             <SelectItem key={t} value={t}>
                               {REUNIAO_TIPO_LABELS[t]}
@@ -330,6 +340,13 @@ export default function ReunioesPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                      {editForm.tipo === "grupo" && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Reunião em grupo veio da importação automática (vários clientes
+                          vinculados). Trocar aqui não desfaz o vínculo, mas trocar o campo
+                          &quot;Médico/Cliente&quot; ao lado sim.
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-1.5">

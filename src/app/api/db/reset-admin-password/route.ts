@@ -3,25 +3,17 @@ import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
 
 // Recuperação de emergência: cria (se o e-mail não existir) ou reseta a
-// senha (se existir) de um usuário master. Pensado pra quando ninguém mais
-// consegue logar e também não se tem acesso ao painel da Vercel pra
-// conferir o DB_INIT_SECRET — por isso aceita DOIS segredos possíveis:
-//
-// 1. DB_INIT_SECRET (variável de ambiente, o "correto" a longo prazo).
-// 2. EMERGENCY_RECOVERY_CODE abaixo — fixo no código, gerado uma única vez
-//    pra destravar o acesso sem depender de nada externo. É um mecanismo de
-//    "quebra o vidro": funciona, mas fica visível a quem tiver acesso a
-//    este repositório. Assim que o acesso normal for recuperado, troque
-//    esse valor (ou apague este bloco) e prefira o fluxo por
-//    DB_INIT_SECRET / tela de Usuários daqui pra frente.
-const EMERGENCY_RECOVERY_CODE = "YECniw3xEGbN6kmUhN6ySusS";
-
+// senha (se existir) de um usuário master. Protegido só por DB_INIT_SECRET
+// (variável de ambiente na Vercel) — a versão anterior também aceitava um
+// código fixo embutido no código como atalho pra destravar o acesso inicial;
+// esse atalho foi removido porque um segredo commitado no Git nunca deixa
+// de ser recuperável (fica no histórico mesmo depois de apagado do arquivo
+// atual), e o acesso master normal já está funcionando.
 export async function POST(req: NextRequest) {
   try {
     const providedSecret = req.headers.get("x-init-secret");
-    const validSecret =
-      !!providedSecret &&
-      (providedSecret === process.env.DB_INIT_SECRET || providedSecret === EMERGENCY_RECOVERY_CODE);
+    const initSecret = process.env.DB_INIT_SECRET;
+    const validSecret = !!providedSecret && !!initSecret && providedSecret === initSecret;
 
     if (!validSecret) {
       return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
@@ -48,7 +40,8 @@ export async function POST(req: NextRequest) {
 
     if (existing.rows.length > 0) {
       const result = await pool.query(
-        `UPDATE dash_users SET password = $1, updated_at = NOW() WHERE email = $2 RETURNING id, email, name, role`,
+        `UPDATE dash_users SET password = $1, updated_at = NOW(), session_version = session_version + 1
+         WHERE email = $2 RETURNING id, email, name, role`,
         [hashed, normalizedEmail]
       );
       return NextResponse.json({ success: true, action: "atualizado", user: result.rows[0] });

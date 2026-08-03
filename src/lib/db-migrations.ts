@@ -77,6 +77,18 @@ export async function runMigrations(): Promise<void> {
     ALTER TABLE roteiros
     ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clientes(id) ON DELETE SET NULL;
   `);
+
+  // Id do item de origem no Calendário (app Lovable/Supabase) — permite a
+  // importação automática ser idempotente: se o trigger do Postgres de lá
+  // disparar mais de uma vez pro mesmo item (reenvio, retry), o índice
+  // único abaixo evita duplicar o roteiro. NULL pra roteiros criados
+  // manualmente (não têm content_id, e vários NULLs são permitidos num
+  // índice único parcial).
+  await pool.query(`ALTER TABLE roteiros ADD COLUMN IF NOT EXISTS content_id VARCHAR(255);`);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_roteiros_content_id
+    ON roteiros(content_id) WHERE content_id IS NOT NULL;
+  `);
   await pool.query(`
     ALTER TABLE reunioes
     ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clientes(id) ON DELETE SET NULL;
@@ -85,6 +97,16 @@ export async function runMigrations(): Promise<void> {
   await pool.query(`
     ALTER TABLE dash_users
     ADD COLUMN IF NOT EXISTS telefone_whatsapp VARCHAR(30);
+  `);
+
+  // Incrementada a cada troca de senha/papel (e implicitamente ignorada
+  // quando o usuário é excluído, já que a linha some) — comparada contra o
+  // valor gravado no cookie de sessão pras rotas mais sensíveis (gestão de
+  // usuários e administração), porque o middleware roda em Edge e não
+  // consegue consultar o banco a cada request. Ver src/lib/session-guard.ts.
+  await pool.query(`
+    ALTER TABLE dash_users
+    ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0;
   `);
 
   await pool.query(`
@@ -139,4 +161,17 @@ export async function runMigrations(): Promise<void> {
       created_at TIMESTAMP DEFAULT NOW()
     );
   `);
+
+  // Índices nas colunas mais filtradas pelos dashboards agregados e pelas
+  // rotas de listagem — sem efeito hoje com o volume atual, mas evita virar
+  // seq scan conforme o histórico crescer.
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_roteiros_client_id ON roteiros(client_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_roteiros_author_id ON roteiros(author_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_roteiros_status ON roteiros(status);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_reunioes_client_id ON reunioes(client_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_reunioes_author_id ON reunioes(author_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_reunioes_status ON reunioes(status);`);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_reuniao_clientes_cliente_id ON reuniao_clientes(cliente_id);`
+  );
 }

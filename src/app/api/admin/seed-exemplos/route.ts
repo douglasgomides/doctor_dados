@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import {
   TAG,
@@ -7,6 +7,7 @@ import {
   LEGACY_AUTHOR_EMAIL,
   LEGACY_CLIENT_NAME,
 } from "@/lib/seed-exemplos-data";
+import { requireFreshMasterSession } from "@/lib/session-guard";
 
 // A geração em si (POST) vive em /api/admin/seed-exemplos/{init,roteiro,
 // reuniao,comercial} — cada peça de conteúdo numa função serverless
@@ -17,8 +18,11 @@ import {
 // "[EXEMPLO]", e os clientes fictícios — incluindo os nomes de uma versão
 // anterior desta função, caso ela já tenha rodado antes.
 
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
   try {
+    const denied = await requireFreshMasterSession(req);
+    if (denied) return denied;
+
     await pool.query(`DELETE FROM comercial_analises WHERE titulo LIKE $1`, [`${TAG}%`]);
     await pool.query(`DELETE FROM dash_users WHERE email = ANY($1::text[])`, [
       [...EXAMPLE_AUTHORS.map((a) => a.email), LEGACY_AUTHOR_EMAIL],

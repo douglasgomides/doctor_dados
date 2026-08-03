@@ -1,12 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { validateComercial } from "@/lib/comercial-validator";
 import { COMERCIAL_TITULO, COMERCIAL_PARTICIPANTES, COMERCIAL_CONTEUDO } from "@/lib/seed-exemplos-data";
+import { requireFreshMasterSession } from "@/lib/session-guard";
 
 export const maxDuration = 30;
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
+    const denied = await requireFreshMasterSession(req);
+    if (denied) return denied;
+
     const validation = await validateComercial(COMERCIAL_CONTEUDO);
 
     await pool.query(

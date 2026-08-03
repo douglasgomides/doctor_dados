@@ -8,13 +8,20 @@ import { UserRole } from "@/types";
 // ============================================
 
 export const SESSION_COOKIE = "session";
-const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 dias
+// Era 7 dias — reduzido porque a sessão não é revalidada contra o banco a
+// cada request (o middleware roda em Edge e só confere a assinatura do
+// cookie), então um usuário excluído ou rebaixado continuava com acesso
+// válido até o cookie expirar. 24h limita essa janela; rotas sensíveis
+// (gestão de usuários, admin) também revalidam contra o banco via `sv`
+// abaixo — ver src/lib/session-guard.ts.
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24; // 24 horas
 
 export interface SessionPayload {
   sub: string;
   email: string;
   name: string;
   role: UserRole;
+  sv: number;
   exp: number;
 }
 
