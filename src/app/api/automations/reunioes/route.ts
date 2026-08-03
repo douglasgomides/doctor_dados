@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { validateReuniao } from "@/lib/reuniao-validator";
-import { findClienteAtivoByParticipantes } from "@/lib/clientes";
+import { findClientesAtivosByParticipantes } from "@/lib/clientes";
 import { ReuniaoTipo } from "@/types";
 
 // Endpoint de escrita pra automação externa (n8n) importar transcrições do
@@ -13,9 +13,12 @@ import { ReuniaoTipo } from "@/types";
 //
 // A pasta do Drive onde o Meet salva transcrições recebe TODO tipo de
 // reunião (dailies internas, comercial, reuniões com médico). Este endpoint
-// só grava como reunião de cliente quando consegue casar, com segurança,
-// exatamente um cliente ativo entre os participantes — caso contrário
-// retorna "skipped" (200, não é erro) e não grava nada.
+// casa os participantes com o cadastro de clientes ativos: 0 clientes
+// batidos = não é reunião de cliente, retorna "skipped" (200, não é erro) e
+// não grava nada; 1 cliente = mentoria 1:1 normal; 2+ clientes = reunião em
+// grupo, gravada com client_id nulo (não tem "o" cliente) e vinculada a
+// todos os clientes envolvidos via reuniao_clientes, pra aparecer no
+// histórico de cada um.
 
 const SYSTEM_AUTHOR_EMAIL = "automacao.meet@doctorcreator.internal";
 const DEFAULT_TIPO: ReuniaoTipo = "mentoria";
@@ -66,8 +69,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "A transcrição não pode estar vazia." }, { status: 400 });
     }
 
-    const cliente = await findClienteAtivoByParticipantes(participantes);
-    if (!cliente) {
+    const clientes = await findClientesAtivosByParticipantes(participantes);
+    if (clientes.length === 0) {
       return NextResponse.json({
         skipped: true,
         reason:
@@ -76,9 +79,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const tipoFinal: ReuniaoTipo = tipo === "grupo" || tipo === "onboarding" || tipo === "pontual"
-      ? tipo
-      : DEFAULT_TIPO;
+    const isGrupo = clientes.length > 1;
+    const tipoFinal: ReuniaoTipo = isGrupo
+      ? "grupo"
+      : tipo === "onboarding" || tipo === "pontual"
+        ? tipo
+        : DEFAULT_TIPO;
+    const clientIdFinal = isGrupo ? null : clientes[0].id;
+    const clientNameFinal = isGrupo ? clientes.map((c) => c.nome).join(" + ") : clientes[0].nome;
 
     const validation = await validateReuniao(tipoFinal, transcricao);
     const author = await getOrCreateSystemAuthorId();
@@ -90,8 +98,8 @@ export async function POST(req: NextRequest) {
       [
         author.id,
         author.name,
-        cliente.id,
-        cliente.nome,
+        clientIdFinal,
+        clientNameFinal,
         tipoFinal,
         transcricao,
         validation.status,
@@ -101,11 +109,19 @@ export async function POST(req: NextRequest) {
         JSON.stringify(validation.suggestedContentIdeas),
       ]
     );
+    const reuniaoId = result.rows[0].id;
+
+    for (const cliente of clientes) {
+      await pool.query(
+        `INSERT INTO reuniao_clientes (reuniao_id, cliente_id, cliente_nome) VALUES ($1, $2, $3)`,
+        [reuniaoId, cliente.id, cliente.nome]
+      );
+    }
 
     return NextResponse.json({
       skipped: false,
-      reuniaoId: result.rows[0].id,
-      clienteNome: cliente.nome,
+      reuniaoId,
+      clienteNome: clientNameFinal,
       status: validation.status,
       score: validation.score,
     });

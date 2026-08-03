@@ -1,6 +1,6 @@
 import pool from "@/lib/db";
 
-interface ClienteBasico {
+export interface ClienteBasico {
   id: string;
   nome: string;
 }
@@ -58,14 +58,16 @@ function nomesCorrespondem(a: string, b: string): boolean {
 }
 
 // Cruza a lista de participantes de uma transcrição (nomes em texto livre,
-// como aparecem no Google Meet) com o cadastro de clientes ativos. Só
-// retorna um cliente quando exatamente um bate — nenhum ou mais de um
-// resultado significa "não dá pra saber com segurança", e quem chama deve
-// tratar isso como "não é uma reunião de cliente" em vez de arriscar
-// registrar no cliente errado.
-export async function findClienteAtivoByParticipantes(
+// como aparecem no Google Meet) com o cadastro de clientes ativos. Retorna
+// TODOS os clientes ativos batidos entre os participantes — 0 significa
+// "não é uma reunião de cliente", 1 é o caso comum (mentoria 1:1), e mais
+// de 1 é uma reunião em grupo (vários médicos-clientes na mesma call).
+// batidos entre os participantes, não só quando dá exatamente um. Usada
+// pra reunião em grupo (vários médicos-clientes na mesma call), onde
+// "mais de um bateu" é o caso esperado, não um alerta de ambiguidade.
+export async function findClientesAtivosByParticipantes(
   participantes: string[]
-): Promise<ClienteBasico | null> {
+): Promise<ClienteBasico[]> {
   const result = await pool.query<ClienteBasico>(
     "SELECT id, nome FROM clientes WHERE ativo = true"
   );
@@ -76,6 +78,5 @@ export async function findClienteAtivoByParticipantes(
     if (bateu) encontrados.set(cliente.id, cliente);
   }
 
-  if (encontrados.size !== 1) return null;
-  return [...encontrados.values()][0];
+  return [...encontrados.values()];
 }

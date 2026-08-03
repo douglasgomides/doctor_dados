@@ -110,8 +110,14 @@ export async function GET(req: NextRequest) {
                 u.name AS responsavel_name, u.telefone_whatsapp AS responsavel_whatsapp,
                 (SELECT COUNT(*) FROM roteiros r
                  WHERE r.client_id = c.id AND r.created_at > NOW() - INTERVAL '7 days') AS roteiros_semana,
-                (SELECT COUNT(*) FROM reunioes re
-                 WHERE re.client_id = c.id AND re.created_at > NOW() - INTERVAL '30 days') AS reunioes_mes
+                (SELECT COUNT(DISTINCT combined.id) FROM (
+                   SELECT re.id, re.created_at FROM reunioes re WHERE re.client_id = c.id
+                   UNION
+                   SELECT re2.id, re2.created_at FROM reunioes re2
+                   JOIN reuniao_clientes rc ON rc.reuniao_id = re2.id
+                   WHERE rc.cliente_id = c.id
+                 ) AS combined
+                 WHERE combined.created_at > NOW() - INTERVAL '30 days') AS reunioes_mes
          FROM clientes c
          LEFT JOIN dash_users u ON u.id = c.responsavel_id
          WHERE c.ativo = true`

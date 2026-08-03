@@ -122,6 +122,15 @@ export async function runMigrations(): Promise<void> {
   await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS plano VARCHAR(255);`);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS reuniao_clientes (
+      reuniao_id UUID NOT NULL REFERENCES reunioes(id) ON DELETE CASCADE,
+      cliente_id UUID NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+      cliente_nome VARCHAR(255) NOT NULL,
+      PRIMARY KEY (reuniao_id, cliente_id)
+    );
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS daily_tarefas (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       titulo VARCHAR(500) NOT NULL DEFAULT '',
