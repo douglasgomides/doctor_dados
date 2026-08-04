@@ -19,6 +19,7 @@ import {
   Wand2,
   Briefcase,
   Inbox,
+  BrainCircuit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -57,7 +58,10 @@ const QUALIDADE_ITEMS: NavItem[] = [
 // Comercial é sobre vender pra lead/prospect — natureza diferente de
 // Qualidade (que é sobre entregar bem pra quem já é cliente), por isso
 // ganha grupo próprio em vez de ficar dentro de "Visão Geral".
-const COMERCIAL_ITEMS: NavItem[] = [{ name: "Comercial", href: "/dashboard/comercial", icon: Briefcase }];
+const COMERCIAL_ITEMS: NavItem[] = [
+  { name: "Comercial", href: "/dashboard/comercial", icon: Briefcase },
+  { name: "Inteligência Comercial", href: "/dashboard/inteligencia-comercial", icon: BrainCircuit },
+];
 
 const FERRAMENTAS_ITEMS: NavItem[] = [
   { name: "Clonador de Carrossel", href: "/dashboard/carousel-tool", icon: Wand2, badge: "Beta" },

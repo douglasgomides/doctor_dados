@@ -198,4 +198,113 @@ export async function runMigrations(): Promise<void> {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_reuniao_clientes_cliente_id ON reuniao_clientes(cliente_id);`
   );
+
+  // --- Clint CRM (contatos, negócios, origens, tags) ---
+  // Espelho local dos dados da Clint, sincronizado periodicamente via
+  // POST /api/automations/clint-sync (n8n dispara, mesmo padrão dos outros
+  // automations). Existe pra o dashboard de inteligência comercial não
+  // depender de consultar a API da Clint (62k+ contatos) a cada carregamento
+  // de página.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clint_contacts (
+      id UUID PRIMARY KEY,
+      name VARCHAR(500),
+      email VARCHAR(255),
+      ddi VARCHAR(10),
+      phone VARCHAR(30),
+      username VARCHAR(255),
+      full_phone VARCHAR(40),
+      organization_id UUID,
+      tags JSONB NOT NULL DEFAULT '[]',
+      fields JSONB NOT NULL DEFAULT '{}',
+      clint_created_at TIMESTAMPTZ,
+      clint_updated_at TIMESTAMPTZ,
+      synced_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_clint_contacts_created_at ON clint_contacts(clint_created_at);`
+  );
+  // GIN pra permitir filtrar por tag (tags é um array de {id,name,color}).
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_clint_contacts_tags ON clint_contacts USING GIN (tags);`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clint_deals (
+      id UUID PRIMARY KEY,
+      origin_id UUID,
+      user_id UUID,
+      user_name VARCHAR(255),
+      user_email VARCHAR(255),
+      contact_id UUID,
+      contact_name VARCHAR(500),
+      status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+      stage VARCHAR(255),
+      stage_id UUID,
+      value NUMERIC NOT NULL DEFAULT 0,
+      currency VARCHAR(10) NOT NULL DEFAULT 'BRL',
+      won_at TIMESTAMPTZ,
+      lost_at TIMESTAMPTZ,
+      lost_status_id UUID,
+      fields JSONB NOT NULL DEFAULT '{}',
+      clint_created_at TIMESTAMPTZ,
+      clint_updated_at TIMESTAMPTZ,
+      clint_updated_stage_at TIMESTAMPTZ,
+      synced_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_clint_deals_status ON clint_deals(status);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_clint_deals_origin_id ON clint_deals(origin_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_clint_deals_stage_id ON clint_deals(stage_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_clint_deals_contact_id ON clint_deals(contact_id);`);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_clint_deals_created_at ON clint_deals(clint_created_at);`
+  );
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_clint_deals_fields ON clint_deals USING GIN (fields);`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clint_origins (
+      id UUID PRIMARY KEY,
+      name VARCHAR(255),
+      synced_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clint_tags (
+      id UUID PRIMARY KEY,
+      name VARCHAR(255),
+      color VARCHAR(20),
+      synced_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // Não existe endpoint da Clint que liste todas as etapas do funil — só
+  // aparecem embutidas em cada negócio (stage_id + stage). Construímos essa
+  // tabela de referência de forma oportunista durante a sincronização de
+  // negócios (upsert do par visto em cada registro).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clint_stages (
+      id UUID PRIMARY KEY,
+      name VARCHAR(255),
+      synced_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // Controla o progresso da sincronização por recurso, pra ela ser
+  // retomável: cada chamada ao endpoint de automação processa páginas até
+  // estourar seu orçamento de tempo (função serverless) e grava até onde
+  // chegou. A próxima chamada continua dali.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clint_sync_state (
+      resource VARCHAR(20) PRIMARY KEY,
+      next_page INTEGER NOT NULL DEFAULT 1,
+      total_pages INTEGER,
+      total_count INTEGER,
+      records_synced_last_run INTEGER NOT NULL DEFAULT 0,
+      status VARCHAR(20) NOT NULL DEFAULT 'idle',
+      last_error TEXT,
+      last_run_at TIMESTAMP,
+      last_completed_at TIMESTAMP
+    );
+  `);
 }
