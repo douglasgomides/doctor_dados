@@ -345,6 +345,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("Erro ao agregar dados de atendimento da Clint:", error);
-    return NextResponse.json({ error: "Erro ao carregar dados de atendimento." }, { status: 500 });
+    const detail = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: `Erro ao carregar dados de atendimento: ${detail}` }, { status: 500 });
   }
 }

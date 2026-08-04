@@ -571,7 +571,11 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("Erro ao agregar dados da Clint:", error);
-    return NextResponse.json({ error: "Erro ao carregar dados do dashboard Clint." }, { status: 500 });
+    const detail = error instanceof Error ? error.message : String(error);
+    return NextResponse.json(
+      { error: `Erro ao carregar dados do dashboard Clint: ${detail}` },
+      { status: 500 }
+    );
   }
 }
 
