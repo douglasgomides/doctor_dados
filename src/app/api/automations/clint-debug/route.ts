@@ -23,6 +23,59 @@ export async function GET(req: NextRequest) {
 
   const channelType = req.nextUrl.searchParams.get("channelType") || "INSTAGRAM";
   const limit = Math.min(50, Math.max(1, Number(req.nextUrl.searchParams.get("limit")) || 25));
+  const chatIds = req.nextUrl.searchParams.getAll("chatId");
+
+  // Modo "lookup": dado um ou mais chat_id vistos no console/rede do painel
+  // da Clint (ex: ?chatId=xxx&chatId=yyy), diz se cada um já existe no que
+  // já sincronizamos — e se sim, de qual canal/contato ele é.
+  if (chatIds.length > 0) {
+    try {
+      const result = await pool.query(
+        `
+        SELECT
+          c.id AS chat_id,
+          c.contact_id,
+          co.name AS contact_name,
+          c.channel_account_id,
+          ch.name AS channel_name,
+          ch.type AS channel_type,
+          c.status,
+          c.first_customer_message_at,
+          c.last_message_at,
+          (SELECT COUNT(*) FROM clint_messages m WHERE m.chat_id = c.id) AS message_count
+        FROM clint_chats c
+        LEFT JOIN clint_contacts co ON co.id = c.contact_id
+        LEFT JOIN clint_channel_accounts ch ON ch.id = c.channel_account_id
+        WHERE c.id = ANY($1)
+        `,
+        [chatIds]
+      );
+      const found = new Map(result.rows.map((r) => [r.chat_id, r]));
+      return NextResponse.json({
+        lookup: chatIds.map((id) => {
+          const row = found.get(id);
+          if (!row) return { chatId: id, foundInDb: false };
+          return {
+            chatId: id,
+            foundInDb: true,
+            contactId: row.contact_id,
+            contactName: row.contact_name,
+            channelAccountId: row.channel_account_id,
+            channelName: row.channel_name,
+            channelType: row.channel_type,
+            status: row.status,
+            firstCustomerMessageAt: row.first_customer_message_at,
+            lastMessageAt: row.last_message_at,
+            messageCount: Number(row.message_count),
+          };
+        }),
+      });
+    } catch (error) {
+      console.error("Erro no lookup de chat Clint:", error);
+      const message = error instanceof Error ? error.message : "Erro desconhecido.";
+      return NextResponse.json({ error: `Falha no lookup: ${message}` }, { status: 500 });
+    }
+  }
 
   try {
     const [channelsResult, typesResult, sampleResult, chatsByChannelResult, originBreakdownResult] =
