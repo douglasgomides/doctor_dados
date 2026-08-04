@@ -55,4 +55,51 @@ describe("paginatedList", () => {
     const result = await paginatedList(fetchPage, { perPage: 50 });
     expect(result.items).toEqual([{ id: 1 }, { id: 2 }]);
   });
+
+  it("reconhece o formato real da Clint (status/totalCount/page/totalPages/hasNext/data)", async () => {
+    const pages = [
+      {
+        status: 200,
+        totalCount: 3,
+        page: 1,
+        totalPages: 2,
+        hasNext: true,
+        hasPrevious: false,
+        data: [{ id: "a" }, { id: "b" }],
+      },
+      {
+        status: 200,
+        totalCount: 3,
+        page: 2,
+        totalPages: 2,
+        hasNext: false,
+        hasPrevious: true,
+        data: [{ id: "c" }],
+      },
+    ];
+    const fetchPage = vi.fn(async (page: number) => pages[page - 1]);
+
+    const result = await paginatedList(fetchPage, { fetchAllPages: true, perPage: 2 });
+
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+    expect(result.items).toEqual([{ id: "a" }, { id: "b" }, { id: "c" }]);
+    expect(result.truncated).toBe(false);
+  });
+
+  it("para na primeira página quando hasNext=false, mesmo com a página cheia", async () => {
+    const fetchPage = vi.fn(async () => ({
+      status: 200,
+      totalCount: 2,
+      page: 1,
+      totalPages: 1,
+      hasNext: false,
+      hasPrevious: false,
+      data: [{ id: "a" }, { id: "b" }],
+    }));
+
+    const result = await paginatedList(fetchPage, { fetchAllPages: true, perPage: 2 });
+
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+    expect(result.items).toEqual([{ id: "a" }, { id: "b" }]);
+  });
 });

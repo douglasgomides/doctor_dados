@@ -23,11 +23,11 @@ interface NormalizedPage<T> {
 }
 
 /**
- * A API da Clint pode devolver listas como array puro, `{ data: [...] }`,
- * `{ data: [...], meta: {...} }` ou `{ items: [...], ... }`. Esta função
- * normaliza qualquer um desses formatos e infere se há mais páginas a
- * buscar, usando os metadados de paginação quando presentes e, na
- * ausência deles, o heurístico "página cheia == provavelmente há mais".
+ * Formato real confirmado da Clint (verificado em produção contra
+ * GET /v1/tags): `{ status, totalCount, page, totalPages, hasNext,
+ * hasPrevious, data: [...] }`. Mantemos também suporte a outros formatos
+ * comuns (array puro, `{ data: [...], meta: {...} }`, `{ items: [...] }`)
+ * como fallback defensivo, caso algum endpoint responda diferente.
  */
 function normalizeListResponse<T>(raw: unknown, requestedPerPage: number): NormalizedPage<T> {
   if (Array.isArray(raw)) {
@@ -49,11 +49,16 @@ function normalizeListResponse<T>(raw: unknown, requestedPerPage: number): Norma
       unknown
     >;
 
+    // hasNext (formato real da Clint) é o sinal mais confiável quando presente.
+    const hasNext = typeof obj.hasNext === "boolean" ? obj.hasNext : toBoolean(meta.hasNext);
+
     const currentPage = toNumber(meta.current_page) ?? toNumber(meta.page);
-    const lastPage = toNumber(meta.last_page) ?? toNumber(meta.total_pages);
+    const lastPage = toNumber(meta.last_page) ?? toNumber(meta.total_pages) ?? toNumber(meta.totalPages);
 
     let hasMore: boolean;
-    if (currentPage !== undefined && lastPage !== undefined) {
+    if (hasNext !== undefined) {
+      hasMore = hasNext;
+    } else if (currentPage !== undefined && lastPage !== undefined) {
       hasMore = currentPage < lastPage;
     } else if (typeof obj.has_more === "boolean") {
       hasMore = obj.has_more;
@@ -67,6 +72,10 @@ function normalizeListResponse<T>(raw: unknown, requestedPerPage: number): Norma
   }
 
   return { items: [], hasMore: false };
+}
+
+function toBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function toNumber(value: unknown): number | undefined {

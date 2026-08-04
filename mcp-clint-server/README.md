@@ -175,14 +175,16 @@ sua conta antes do uso em produção:
 - **Nomes dos parâmetros de filtro** em `clint_list_contacts` e
   `clint_list_deals` (`name`, `email`, `phone`, `origin`, `tags`, `status`,
   `stage`, `user`, `contact`) seguem a nomenclatura mais comum para esse
-  tipo de API. Se a Clint usar nomes diferentes (ex.: `origin_id` em vez de
-  `origin`), ajuste os `query` passados em `src/tools/contacts.ts` e
-  `src/tools/deals.ts`.
-- **Formato de paginação**: `src/pagination.ts` reconhece automaticamente
-  respostas como array puro, `{ data: [...] }`, `{ data: [...], meta: {
-  current_page, last_page } }` ou `{ items: [...] }`/`{ results: [...] }`.
-  Se a API usar outro envelope, ajuste `normalizeListResponse` nesse
-  arquivo.
+  tipo de API e ainda **não foram validados contra uma conta real**. Se a
+  Clint usar nomes diferentes (ex.: `origin_id` em vez de `origin`), ajuste
+  os `query` passados em `src/tools/contacts.ts` e `src/tools/deals.ts`.
+- **Formato de paginação**: confirmado em produção (`GET /v1/tags` numa
+  conta real) como `{ status, totalCount, page, totalPages, hasNext,
+  hasPrevious, data: [...] }`. `src/pagination.ts` usa `hasNext` como sinal
+  principal para decidir se busca a próxima página, com suporte defensivo
+  a outros formatos (array puro, `{ data, meta: { current_page, last_page
+  } }`, `{ items: [...] }`) como fallback, caso algum endpoint específico
+  responda diferente.
 
 ## Licença
 
