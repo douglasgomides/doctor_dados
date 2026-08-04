@@ -7,9 +7,13 @@ import { syncResource, ClintResource } from "@/lib/clint-sync";
 export const maxDuration = 60;
 
 // Endpoint de sincronização Clint → Postgres local, disparado externamente
-// (n8n, ou manualmente) — mesmo padrão de segredo compartilhado dos outros
-// automations (ver src/app/api/automations/comercial/route.ts). Fica de
-// fora dos prefixos protegidos por sessão em src/proxy.ts, de propósito.
+// (n8n, ou manualmente). Fica de fora dos prefixos protegidos por sessão em
+// src/proxy.ts, de propósito.
+//
+// Usa um segredo PRÓPRIO (CLINT_SYNC_SECRET), separado do
+// AUTOMATION_API_SECRET compartilhado pelos outros automations — assim dá
+// pra girar/gerar esse segredo sem afetar as automações que já existem
+// (alerts, comercial, dailies, reuniões).
 //
 // Retomável: cada chamada processa contatos/negócios até esgotar o
 // orçamento de tempo (padrão 45s) e devolve done=false + a página onde
@@ -20,9 +24,9 @@ export const maxDuration = 60;
 const VALID_RESOURCES: ClintResource[] = ["contacts", "deals", "origins", "tags"];
 
 export async function POST(req: NextRequest) {
-  const secret = process.env.AUTOMATION_API_SECRET;
+  const secret = process.env.CLINT_SYNC_SECRET;
   if (!secret) {
-    return NextResponse.json({ error: "AUTOMATION_API_SECRET não configurado no servidor." }, { status: 500 });
+    return NextResponse.json({ error: "CLINT_SYNC_SECRET não configurado no servidor." }, { status: 500 });
   }
 
   const providedSecret = req.headers.get("x-automation-secret");
