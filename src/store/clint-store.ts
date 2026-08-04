@@ -87,6 +87,13 @@ export interface ClintDashboardData {
   originProductCross: ClintOriginProductRow[];
   insightSections: ClintInsightSection[];
   actions: ClintAction[];
+  productOptions: string[];
+}
+
+export interface ClintFilters {
+  from?: string;
+  to?: string;
+  product?: string;
 }
 
 export interface ClintDealRow {
@@ -178,17 +185,25 @@ interface ClintState {
   data: ClintDashboardData | null;
   loading: boolean;
   error: string | null;
-  fetchData: () => Promise<void>;
+  fetchData: (filters?: ClintFilters) => Promise<void>;
 
   deals: ClintDealsResult | null;
   dealsLoading: boolean;
   dealsError: string | null;
-  fetchDeals: (params?: { search?: string; status?: string; offset?: number }) => Promise<void>;
+  fetchDeals: (
+    params?: { search?: string; status?: string; offset?: number } & ClintFilters
+  ) => Promise<void>;
 
   atendimento: ClintAtendimentoData | null;
   atendimentoLoading: boolean;
   atendimentoError: string | null;
-  fetchAtendimento: () => Promise<void>;
+  fetchAtendimento: (filters?: ClintFilters) => Promise<void>;
+}
+
+function appendFilters(query: URLSearchParams, filters?: ClintFilters) {
+  if (filters?.from) query.set("from", filters.from);
+  if (filters?.to) query.set("to", filters.to);
+  if (filters?.product) query.set("product", filters.product);
 }
 
 export const useClintStore = create<ClintState>()((set) => ({
@@ -196,10 +211,13 @@ export const useClintStore = create<ClintState>()((set) => ({
   loading: false,
   error: null,
 
-  fetchData: async () => {
+  fetchData: async (filters) => {
     set({ loading: true, error: null });
     try {
-      const res = await fetch("/api/dashboard/clint");
+      const query = new URLSearchParams();
+      appendFilters(query, filters);
+      const qs = query.toString();
+      const res = await fetch(`/api/dashboard/clint${qs ? `?${qs}` : ""}`, { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) {
         set({ error: data.error || "Erro ao carregar dados da Clint.", loading: false });
@@ -221,9 +239,10 @@ export const useClintStore = create<ClintState>()((set) => ({
       const query = new URLSearchParams();
       if (params.search) query.set("search", params.search);
       if (params.status) query.set("status", params.status);
+      appendFilters(query, params);
       query.set("offset", String(params.offset ?? 0));
 
-      const res = await fetch(`/api/dashboard/clint/deals?${query.toString()}`);
+      const res = await fetch(`/api/dashboard/clint/deals?${query.toString()}`, { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) {
         set({ dealsError: data.error || "Erro ao carregar negócios.", dealsLoading: false });
@@ -239,10 +258,13 @@ export const useClintStore = create<ClintState>()((set) => ({
   atendimentoLoading: false,
   atendimentoError: null,
 
-  fetchAtendimento: async () => {
+  fetchAtendimento: async (filters) => {
     set({ atendimentoLoading: true, atendimentoError: null });
     try {
-      const res = await fetch("/api/dashboard/clint/atendimento");
+      const query = new URLSearchParams();
+      appendFilters(query, filters);
+      const qs = query.toString();
+      const res = await fetch(`/api/dashboard/clint/atendimento${qs ? `?${qs}` : ""}`, { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) {
         set({ atendimentoError: data.error || "Erro ao carregar atendimento.", atendimentoLoading: false });

@@ -1,9 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 
 // Agregações do espelho local dos dados da Clint (ver src/lib/clint-sync.ts)
 // para o dashboard de Inteligência Comercial. Protegido por sessão master —
 // já coberto pelo prefixo /api/dashboard em src/proxy.ts.
+//
+// Aceita filtros globais via query string: ?from=AAAA-MM-DD&to=AAAA-MM-DD&product=...
+// `from`/`to` filtram por clint_created_at (negócios e contatos, cada um
+// pela própria data de criação). `product` filtra só os negócios (não faz
+// sentido pra contatos) por COALESCE(fields->>'product_name', fields->>'produto').
 
 const WEEKS_BACK = 12;
 const MIN_VOLUME_FOR_RATE = 8; // volume mínimo pra uma origem/produto entrar nos insights de "melhor/pior"
@@ -41,6 +46,12 @@ interface TagRow {
   count: number;
 }
 
+interface DashboardFilters {
+  from: string | null;
+  to: string | null;
+  product: string | null;
+}
+
 function winRate(won: number, lost: number): number | null {
   const decided = won + lost;
   return decided > 0 ? won / decided : null;
@@ -51,8 +62,52 @@ function toWeeklySeries(rows: any[]): WeeklyPoint[] {
   return rows.map((r) => ({ week: new Date(r.week).toISOString().slice(0, 10), count: Number(r.count) }));
 }
 
-export async function GET() {
+function parseFilters(req: NextRequest): DashboardFilters {
+  const params = req.nextUrl.searchParams;
+  return {
+    from: params.get("from") || null,
+    to: params.get("to") || null,
+    product: params.get("product") || null,
+  };
+}
+
+/**
+ * Gera o fragmento "AND ..." (com placeholders $N a partir de `startIndex`)
+ * pra filtrar uma tabela com coluna `clint_created_at` por data, e
+ * opcionalmente `fields->>'product_name'/'produto'` por produto (só faz
+ * sentido pra clint_deals — não passe `includeProduct` pra clint_contacts).
+ */
+function buildFilterClause(
+  filters: DashboardFilters,
+  startIndex: number,
+  includeProduct: boolean
+): { sql: string; params: unknown[] } {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  let i = startIndex;
+
+  if (filters.from) {
+    conditions.push(`clint_created_at >= $${i++}`);
+    params.push(filters.from);
+  }
+  if (filters.to) {
+    conditions.push(`clint_created_at < ($${i++}::date + INTERVAL '1 day')`);
+    params.push(filters.to);
+  }
+  if (includeProduct && filters.product) {
+    conditions.push(`COALESCE(fields->>'product_name', fields->>'produto') = $${i++}`);
+    params.push(filters.product);
+  }
+
+  return { sql: conditions.length > 0 ? conditions.map((c) => `AND ${c}`).join(" ") : "", params };
+}
+
+export async function GET(req: NextRequest) {
   try {
+    const filters = parseFilters(req);
+    const dealFilter = buildFilterClause(filters, 1, true);
+    const contactFilter = buildFilterClause(filters, 1, false);
+
     const [
       overviewResult,
       contactsWeeklyResult,
@@ -66,43 +121,60 @@ export async function GET() {
       contactsWithDealResult,
       cycleTimeResult,
       originProductResult,
+      productOptionsResult,
     ] = await Promise.all([
-      pool.query(`
+      pool.query(
+        `
         SELECT
-          (SELECT COUNT(*) FROM clint_contacts) AS total_contacts,
-          (SELECT COUNT(*) FROM clint_deals) AS total_deals,
-          (SELECT COUNT(*) FROM clint_deals WHERE status = 'OPEN') AS open_deals,
-          (SELECT COUNT(*) FROM clint_deals WHERE status = 'WON') AS won_deals,
-          (SELECT COUNT(*) FROM clint_deals WHERE status = 'LOST') AS lost_deals,
-          (SELECT COALESCE(SUM(value), 0) FROM clint_deals WHERE status = 'WON') AS total_revenue,
-          (SELECT COALESCE(AVG(value), 0) FROM clint_deals WHERE status = 'WON' AND value > 0) AS avg_ticket
-      `),
-      pool.query(`
+          (SELECT COUNT(*) FROM clint_deals WHERE 1=1 ${dealFilter.sql}) AS total_deals,
+          (SELECT COUNT(*) FROM clint_deals WHERE status = 'OPEN' ${dealFilter.sql}) AS open_deals,
+          (SELECT COUNT(*) FROM clint_deals WHERE status = 'WON' ${dealFilter.sql}) AS won_deals,
+          (SELECT COUNT(*) FROM clint_deals WHERE status = 'LOST' ${dealFilter.sql}) AS lost_deals,
+          (SELECT COALESCE(SUM(value), 0) FROM clint_deals WHERE status = 'WON' ${dealFilter.sql}) AS total_revenue,
+          (SELECT COALESCE(AVG(value), 0) FROM clint_deals WHERE status = 'WON' AND value > 0 ${dealFilter.sql}) AS avg_ticket,
+          (SELECT COUNT(*) FROM clint_contacts WHERE 1=1 ${contactFilter.sql}) AS total_contacts
+        `,
+        [...dealFilter.params]
+      ),
+      pool.query(
+        `
         SELECT date_trunc('week', clint_created_at) AS week, COUNT(*) AS count
         FROM clint_contacts
-        WHERE clint_created_at > NOW() - INTERVAL '${WEEKS_BACK} weeks'
+        WHERE clint_created_at > NOW() - INTERVAL '${WEEKS_BACK} weeks' ${contactFilter.sql}
         GROUP BY 1 ORDER BY 1
-      `),
-      pool.query(`
+        `,
+        contactFilter.params
+      ),
+      pool.query(
+        `
         SELECT date_trunc('week', clint_created_at) AS week, COUNT(*) AS count
         FROM clint_deals
-        WHERE clint_created_at > NOW() - INTERVAL '${WEEKS_BACK} weeks'
+        WHERE clint_created_at > NOW() - INTERVAL '${WEEKS_BACK} weeks' ${dealFilter.sql}
         GROUP BY 1 ORDER BY 1
-      `),
-      pool.query(`
+        `,
+        dealFilter.params
+      ),
+      pool.query(
+        `
         SELECT date_trunc('week', won_at) AS week, COUNT(*) AS count
         FROM clint_deals
-        WHERE status = 'WON' AND won_at > NOW() - INTERVAL '${WEEKS_BACK} weeks'
+        WHERE status = 'WON' AND won_at > NOW() - INTERVAL '${WEEKS_BACK} weeks' ${dealFilter.sql}
         GROUP BY 1 ORDER BY 1
-      `),
-      pool.query(`
+        `,
+        dealFilter.params
+      ),
+      pool.query(
+        `
         SELECT stage, stage_id, COUNT(*) AS count, COALESCE(SUM(value), 0) AS value
         FROM clint_deals
-        WHERE status = 'OPEN' AND stage IS NOT NULL
+        WHERE status = 'OPEN' AND stage IS NOT NULL ${dealFilter.sql}
         GROUP BY stage, stage_id
         ORDER BY count DESC
-      `),
-      pool.query(`
+        `,
+        dealFilter.params
+      ),
+      pool.query(
+        `
         SELECT
           d.origin_id AS origin_id,
           COALESCE(o.name, 'Sem origem') AS origin_name,
@@ -113,31 +185,41 @@ export async function GET() {
           COALESCE(SUM(d.value) FILTER (WHERE d.status = 'WON'), 0) AS revenue
         FROM clint_deals d
         LEFT JOIN clint_origins o ON o.id = d.origin_id
+        WHERE 1=1 ${dealFilter.sql.replace(/clint_created_at/g, "d.clint_created_at").replace(/fields->>/g, "d.fields->>")}
         GROUP BY d.origin_id, o.name
         ORDER BY total DESC
-      `),
-      pool.query(`
+        `,
+        dealFilter.params
+      ),
+      pool.query(
+        `
         SELECT
           COALESCE(fields->>'product_name', fields->>'produto') AS product,
           COUNT(*) AS total,
           COALESCE(SUM(value), 0) AS revenue
         FROM clint_deals
-        WHERE status = 'WON' AND COALESCE(fields->>'product_name', fields->>'produto') IS NOT NULL
+        WHERE status = 'WON' AND COALESCE(fields->>'product_name', fields->>'produto') IS NOT NULL ${dealFilter.sql}
         GROUP BY 1
         ORDER BY revenue DESC
         LIMIT 20
-      `),
-      pool.query(`
+        `,
+        dealFilter.params
+      ),
+      pool.query(
+        `
         SELECT
           COALESCE(fields->>'fonte', '(sem fonte)') AS fonte,
           COUNT(*) AS total,
           COUNT(*) FILTER (WHERE status = 'WON') AS won,
           COUNT(*) FILTER (WHERE status = 'LOST') AS lost
         FROM clint_deals
+        WHERE 1=1 ${dealFilter.sql}
         GROUP BY 1
         ORDER BY total DESC
         LIMIT 15
-      `),
+        `,
+        dealFilter.params
+      ),
       pool.query(`
         SELECT tag->>'name' AS name, COUNT(*) AS count
         FROM clint_contacts, jsonb_array_elements(tags) AS tag
@@ -155,12 +237,16 @@ export async function GET() {
           FROM clint_contacts c
         ) sub
       `),
-      pool.query(`
+      pool.query(
+        `
         SELECT AVG(EXTRACT(EPOCH FROM (won_at - clint_created_at)) / 86400) AS avg_days_to_win
         FROM clint_deals
-        WHERE status = 'WON' AND won_at IS NOT NULL AND clint_created_at IS NOT NULL
-      `),
-      pool.query(`
+        WHERE status = 'WON' AND won_at IS NOT NULL AND clint_created_at IS NOT NULL ${dealFilter.sql}
+        `,
+        dealFilter.params
+      ),
+      pool.query(
+        `
         SELECT
           COALESCE(o.name, 'Sem origem') AS origin_name,
           COALESCE(d.fields->>'product_name', d.fields->>'produto', '(sem produto)') AS product,
@@ -168,10 +254,18 @@ export async function GET() {
           COALESCE(SUM(d.value), 0) AS revenue
         FROM clint_deals d
         LEFT JOIN clint_origins o ON o.id = d.origin_id
-        WHERE d.status = 'WON'
+        WHERE d.status = 'WON' ${dealFilter.sql.replace(/clint_created_at/g, "d.clint_created_at").replace(/fields->>/g, "d.fields->>")}
         GROUP BY 1, 2
         ORDER BY revenue DESC
         LIMIT 15
+        `,
+        dealFilter.params
+      ),
+      pool.query(`
+        SELECT DISTINCT COALESCE(fields->>'product_name', fields->>'produto') AS product
+        FROM clint_deals
+        WHERE COALESCE(fields->>'product_name', fields->>'produto') IS NOT NULL
+        ORDER BY 1
       `),
     ]);
 
@@ -268,6 +362,7 @@ export async function GET() {
       originProductCross: originProduct,
       insightSections,
       actions,
+      productOptions: productOptionsResult.rows.map((r) => r.product as string),
     });
   } catch (error) {
     console.error("Erro ao agregar dados da Clint:", error);

@@ -8,6 +8,7 @@ import {
   ClintWeeklyPoint,
   ClintInsightSection,
   ClintAction,
+  ClintFilters,
 } from "@/store/clint-store";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,9 @@ import {
   Clock,
   AlertTriangle,
   ListChecks,
+  RefreshCw,
+  Filter,
+  X,
 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer, XAxis, Tooltip } from "recharts";
 
@@ -301,17 +305,105 @@ const STATUS_VARIANT: Record<string, "default" | "outline" | "destructive"> = {
   LOST: "destructive",
 };
 
-function NegociosTab() {
+/** Filtro global de data e produto — afeta resumo, negócios e atendimento ao mesmo tempo. */
+function FilterBar({
+  filters,
+  onApply,
+  onRefresh,
+  productOptions,
+  loading,
+}: {
+  filters: ClintFilters;
+  onApply: (filters: ClintFilters) => void;
+  onRefresh: () => void;
+  productOptions: string[];
+  loading: boolean;
+}) {
+  const [from, setFrom] = useState(filters.from ?? "");
+  const [to, setTo] = useState(filters.to ?? "");
+  const [product, setProduct] = useState(filters.product ?? "todos");
+
+  const hasActiveFilters = Boolean(filters.from || filters.to || filters.product);
+
+  function apply() {
+    onApply({
+      from: from || undefined,
+      to: to || undefined,
+      product: product !== "todos" ? product : undefined,
+    });
+  }
+
+  function clear() {
+    setFrom("");
+    setTo("");
+    setProduct("todos");
+    onApply({});
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-3 flex flex-wrap items-end gap-2">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground pb-2 pr-1">
+        <Filter className="h-3.5 w-3.5" />
+        Filtros
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-[11px] text-muted-foreground uppercase tracking-wide">De</label>
+        <Input
+          type="date"
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          className="w-[150px]"
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-[11px] text-muted-foreground uppercase tracking-wide">Até</label>
+        <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-[150px]" />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-[11px] text-muted-foreground uppercase tracking-wide">Produto</label>
+        <Select value={product} onValueChange={setProduct}>
+          <SelectTrigger className="w-[220px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os produtos</SelectItem>
+            {productOptions.map((p) => (
+              <SelectItem key={p} value={p}>
+                {p}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <Button size="sm" onClick={apply} disabled={loading}>
+        Aplicar filtros
+      </Button>
+      {hasActiveFilters && (
+        <Button size="sm" variant="outline" onClick={clear} disabled={loading}>
+          <X className="h-3.5 w-3.5" />
+          Limpar
+        </Button>
+      )}
+      <Button size="sm" variant="ghost" onClick={onRefresh} disabled={loading} className="ml-auto">
+        <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+        Atualizar dados
+      </Button>
+    </div>
+  );
+}
+
+function NegociosTab({ filters }: { filters: ClintFilters }) {
   const { deals, dealsLoading, dealsError, fetchDeals } = useClintStore();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("todos");
 
   useEffect(() => {
-    fetchDeals();
-  }, [fetchDeals]);
+    fetchDeals({ search: search || undefined, status: status !== "todos" ? status : undefined, offset: 0, ...filters });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchDeals, filters]);
 
   function applyFilters() {
-    fetchDeals({ search: search || undefined, status: status !== "todos" ? status : undefined, offset: 0 });
+    fetchDeals({ search: search || undefined, status: status !== "todos" ? status : undefined, offset: 0, ...filters });
   }
 
   return (
@@ -398,12 +490,12 @@ function NegociosTab() {
   );
 }
 
-function AtendimentoTab() {
+function AtendimentoTab({ filters }: { filters: ClintFilters }) {
   const { atendimento, atendimentoLoading, atendimentoError, fetchAtendimento } = useClintStore();
 
   useEffect(() => {
-    fetchAtendimento();
-  }, [fetchAtendimento]);
+    fetchAtendimento(filters);
+  }, [fetchAtendimento, filters]);
 
   if (atendimentoLoading && !atendimento) {
     return (
@@ -624,10 +716,15 @@ function AtendimentoTab() {
 
 export default function InteligenciaComercialPage() {
   const { data, loading, error, fetchData } = useClintStore();
+  const [filters, setFilters] = useState<ClintFilters>({});
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchData(filters);
+  }, [fetchData, filters]);
+
+  function handleRefresh() {
+    setFilters((f) => ({ ...f }));
+  }
 
   if (loading && !data) {
     return (
@@ -671,6 +768,14 @@ export default function InteligenciaComercialPage() {
           de resposta para decisões mais assertivas.
         </p>
       </div>
+
+      <FilterBar
+        filters={filters}
+        onApply={setFilters}
+        onRefresh={handleRefresh}
+        productOptions={data.productOptions}
+        loading={loading}
+      />
 
       <Tabs defaultValue="resumo">
         <TabsList>
@@ -757,11 +862,11 @@ export default function InteligenciaComercialPage() {
         </TabsContent>
 
         <TabsContent value="negocios">
-          <NegociosTab />
+          <NegociosTab filters={filters} />
         </TabsContent>
 
         <TabsContent value="atendimento">
-          <AtendimentoTab />
+          <AtendimentoTab filters={filters} />
         </TabsContent>
 
         <TabsContent value="origem-produto" className="space-y-6 mt-4">

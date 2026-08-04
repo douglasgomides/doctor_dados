@@ -17,6 +17,8 @@ export async function GET(req: NextRequest) {
     const status = params.get("status")?.trim() || null;
     const origin = params.get("origin")?.trim() || null;
     const product = params.get("product")?.trim() || null;
+    const from = params.get("from")?.trim() || null;
+    const to = params.get("to")?.trim() || null;
     const limit = Math.min(MAX_LIMIT, Math.max(1, Number(params.get("limit")) || DEFAULT_LIMIT));
     const offset = Math.max(0, Number(params.get("offset")) || 0);
 
@@ -24,6 +26,14 @@ export async function GET(req: NextRequest) {
     const values: unknown[] = [];
     let i = 1;
 
+    if (from) {
+      conditions.push(`d.clint_created_at >= $${i++}`);
+      values.push(from);
+    }
+    if (to) {
+      conditions.push(`d.clint_created_at < ($${i++}::date + INTERVAL '1 day')`);
+      values.push(to);
+    }
     if (search) {
       conditions.push(
         `(d.contact_name ILIKE $${i} OR COALESCE(d.fields->>'product_name', d.fields->>'produto') ILIKE $${i})`
