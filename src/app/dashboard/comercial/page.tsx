@@ -64,7 +64,7 @@ export default function ComercialPage() {
 
 function ComercialPageInner() {
   const currentUser = useAuthStore((s) => s.user);
-  const { analises, fetchAnalises } = useComercialStore();
+  const { analises, loading, fetchAnalises } = useComercialStore();
   const [selected, setSelected] = useState<ComercialAnalise | null>(null);
   const [aba, setAba] = useState<Aba>("todos");
   const [busca, setBusca] = useState("");
@@ -203,9 +203,11 @@ function ComercialPageInner() {
                 {filtradas.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                      {analises.length === 0
-                        ? "Nenhuma call comercial analisada ainda."
-                        : "Nenhuma call encontrada com esse filtro."}
+                      {loading
+                        ? "Carregando..."
+                        : analises.length === 0
+                          ? "Nenhuma call comercial analisada ainda."
+                          : "Nenhuma call encontrada com esse filtro."}
                     </TableCell>
                   </TableRow>
                 )}

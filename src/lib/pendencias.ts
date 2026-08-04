@@ -9,6 +9,8 @@ import { Pendencia } from "@/types";
 // sessão). As duas rotas chamam a mesma função — nenhuma lógica duplicada.
 
 const PENDING_LIMIT = 100;
+const NEGOCIACAO_PARADA_DIAS = 7;
+const CLIENTE_INATIVO_DIAS = 30;
 
 // Faixa Unicode dos diacríticos combináveis, montada por código de
 // caractere (não por glifo) — mesmo motivo do lib/clientes.ts.
@@ -38,8 +40,15 @@ function acharVendedorPorParticipantes(
 }
 
 export async function buscarPendencias(): Promise<Pendencia[]> {
-  const [roteirosResult, reunioesResult, comercialResult, equipeResult, clientesResult] =
-    await Promise.all([
+  const [
+    roteirosResult,
+    reunioesResult,
+    comercialResult,
+    equipeResult,
+    clientesResult,
+    negociacaoParadaResult,
+    atividadeClientesResult,
+  ] = await Promise.all([
       pool.query(
         `SELECT r.id, r.client_name, r.format, r.score, r.author_name, r.created_at,
                 u.name AS responsavel_name, u.telefone_whatsapp AS responsavel_whatsapp
@@ -86,6 +95,37 @@ export async function buscarPendencias(): Promise<Pendencia[]> {
                    WHERE rc.cliente_id = c.id AND re2.is_test = false
                  ) AS combined
                  WHERE combined.created_at > NOW() - INTERVAL '30 days') AS reunioes_mes
+         FROM clientes c
+         LEFT JOIN dash_users u ON u.id = c.responsavel_id
+         WHERE c.ativo = true AND c.is_test = false`
+      ),
+      // Negociação comercial que parou de andar — "em_negociacao" sem
+      // nenhuma atualização (mudar resultado, editar) há muitos dias.
+      pool.query(
+        `SELECT id, titulo, participantes, updated_at
+         FROM comercial_analises
+         WHERE resultado = 'em_negociacao' AND is_test = false
+           AND updated_at < NOW() - INTERVAL '${NEGOCIACAO_PARADA_DIAS} days'
+         ORDER BY updated_at ASC
+         LIMIT $1`,
+        [PENDING_LIMIT]
+      ),
+      // Última atividade real (roteiro ou reunião) de cada cliente ativo —
+      // rede de segurança pra cliente sem meta de cadência cadastrada, que
+      // hoje nunca aparece como pendência mesmo abandonado.
+      pool.query(
+        `SELECT c.nome, c.created_at,
+                u.name AS responsavel_name, u.telefone_whatsapp AS responsavel_whatsapp,
+                (SELECT MAX(r.created_at) FROM roteiros r
+                 WHERE r.client_id = c.id AND r.is_test = false) AS ultimo_roteiro,
+                (SELECT MAX(x.created_at) FROM (
+                   SELECT re.created_at FROM reunioes re
+                   WHERE re.client_id = c.id AND re.is_test = false
+                   UNION ALL
+                   SELECT re2.created_at FROM reunioes re2
+                   JOIN reuniao_clientes rc ON rc.reuniao_id = re2.id
+                   WHERE rc.cliente_id = c.id AND re2.is_test = false
+                 ) x) AS ultima_reuniao
          FROM clientes c
          LEFT JOIN dash_users u ON u.id = c.responsavel_id
          WHERE c.ativo = true AND c.is_test = false`
@@ -180,6 +220,43 @@ export async function buscarPendencias(): Promise<Pendencia[]> {
         responsavelWhatsapp: row.responsavel_whatsapp,
         mensagem: `${row.nome} teve ${reunioesMes} reunião(ões) nos últimos 30 dias, abaixo da meta de ${row.reunioes_por_mes}/mês.`,
         detalhe: { meta: row.reunioes_por_mes, atual: reunioesMes, janelaDias: 30 },
+      });
+    }
+  }
+
+  for (const row of negociacaoParadaResult.rows) {
+    const diasParada = Math.floor(
+      (Date.now() - new Date(row.updated_at).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    const participantes: string[] = row.participantes || [];
+    const vendedor = acharVendedorPorParticipantes(participantes, equipeResult.rows);
+    pendencias.push({
+      tipo: "comercial_negociacao_parada",
+      urgente: false,
+      clienteNome: row.titulo || "Call comercial",
+      responsavelNome: vendedor?.name ?? null,
+      responsavelWhatsapp: vendedor?.telefone_whatsapp ?? null,
+      mensagem: `A negociação "${row.titulo || "sem título"}" está marcada como "em negociação" há ${diasParada} dias sem nenhuma atualização. Vale confirmar se ainda está viva.`,
+      detalhe: { comercialId: row.id, diasParada, participantes },
+    });
+  }
+
+  for (const row of atividadeClientesResult.rows) {
+    const datas = [row.ultimo_roteiro, row.ultima_reuniao, row.created_at]
+      .filter(Boolean)
+      .map((d) => new Date(d).getTime());
+    const ultimaAtividade = Math.max(...datas);
+    const diasSemAtividade = Math.floor((Date.now() - ultimaAtividade) / (1000 * 60 * 60 * 24));
+
+    if (diasSemAtividade >= CLIENTE_INATIVO_DIAS) {
+      pendencias.push({
+        tipo: "cliente_inativo",
+        urgente: false,
+        clienteNome: row.nome,
+        responsavelNome: row.responsavel_name,
+        responsavelWhatsapp: row.responsavel_whatsapp,
+        mensagem: `${row.nome} está sem nenhum roteiro ou reunião registrada há ${diasSemAtividade} dias — vale confirmar se o cliente ainda está ativo.`,
+        detalhe: { diasSemAtividade },
       });
     }
   }

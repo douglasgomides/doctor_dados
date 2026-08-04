@@ -18,6 +18,7 @@ const MODULO_POR_TIPO: Partial<Record<PendenciaTipo, { href: string; idKey: stri
   roteiro_ajustar: { href: "/dashboard/roteiros", idKey: "roteiroId" },
   reuniao_ajustar: { href: "/dashboard/reunioes", idKey: "reuniaoId" },
   comercial_ajustar: { href: "/dashboard/comercial", idKey: "comercialId" },
+  comercial_negociacao_parada: { href: "/dashboard/comercial", idKey: "comercialId" },
 };
 
 function linkDaPendencia(p: Pendencia): string | null {
@@ -71,7 +72,7 @@ export default function PendenciasPage() {
         <CardContent>
           {pendencias.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
-              Nenhuma pendência agora. Tudo em dia.
+              {loading ? "Carregando..." : "Nenhuma pendência agora. Tudo em dia."}
             </p>
           ) : (
             <ul className="space-y-2">

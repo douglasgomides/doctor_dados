@@ -41,7 +41,7 @@ const TODOS_STATUS = "todos";
 
 export default function ClientesPage() {
   const currentUser = useAuthStore((s) => s.user);
-  const { clientes, fetchClientes, addCliente, updateCliente, removeCliente } = useClientesStore();
+  const { clientes, loading, fetchClientes, addCliente, updateCliente, removeCliente } = useClientesStore();
   const { users, fetchUsers } = useUsersStore();
 
   const [showDialog, setShowDialog] = useState(false);
@@ -305,9 +305,11 @@ export default function ClientesPage() {
                 {clientesFiltrados.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                      {clientes.length === 0
-                        ? "Nenhum cliente cadastrado ainda. Clientes são criados automaticamente quando um roteiro ou reunião é enviado com o nome dele."
-                        : "Nenhum cliente encontrado com esses filtros."}
+                      {loading
+                        ? "Carregando..."
+                        : clientes.length === 0
+                          ? "Nenhum cliente cadastrado ainda. Clientes são criados automaticamente quando um roteiro ou reunião é enviado com o nome dele."
+                          : "Nenhum cliente encontrado com esses filtros."}
                     </TableCell>
                   </TableRow>
                 )}

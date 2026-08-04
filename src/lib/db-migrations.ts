@@ -131,6 +131,11 @@ export async function runMigrations(): Promise<void> {
 
   await pool.query(`ALTER TABLE comercial_analises ADD COLUMN IF NOT EXISTS resultado VARCHAR(20);`);
   await pool.query(`ALTER TABLE comercial_analises ADD COLUMN IF NOT EXISTS valor_fechado NUMERIC;`);
+  // Usada pra detectar negociação parada (resultado = 'em_negociacao' sem
+  // nenhuma atualização há muito tempo) — ver src/lib/pendencias.ts.
+  await pool.query(
+    `ALTER TABLE comercial_analises ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();`
+  );
 
   await pool.query(`ALTER TABLE clientes ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;`);
   await pool.query(`ALTER TABLE roteiros ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false;`);
