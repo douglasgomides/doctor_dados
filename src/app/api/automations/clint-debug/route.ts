@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   // gente de fora (ex: leads de Instagram que nunca chegaram no nosso banco).
   if (syncStatus) {
     try {
-      const [stateResult, countsResult] = await Promise.all([
+      const [stateResult, countsResult, instagramLikeResult] = await Promise.all([
         pool.query(
           `SELECT resource, next_page, total_pages, total_count, status, last_run_at, last_completed_at, last_error FROM clint_sync_state ORDER BY resource`
         ),
@@ -48,10 +48,30 @@ export async function GET(req: NextRequest) {
             (SELECT COUNT(*) FROM clint_chats) AS chats,
             (SELECT COUNT(*) FROM clint_messages) AS messages
         `),
+        // Contatos com "assinatura" de lead só-Instagram (username
+        // preenchido, sem telefone) — e quantos desses JÁ têm negócio
+        // associado (ou seja, já cobertos pela sincronização de mensagens
+        // atual, que só olha contatos com negócio).
+        pool.query(`
+          SELECT
+            COUNT(*) AS total_username_contacts,
+            COUNT(*) FILTER (
+              WHERE EXISTS (SELECT 1 FROM clint_deals d WHERE d.contact_id = c.id)
+            ) AS com_negocio
+          FROM clint_contacts c
+          WHERE c.username IS NOT NULL AND c.full_phone IS NULL
+        `),
       ]);
       return NextResponse.json({
         syncState: stateResult.rows,
         rowCounts: countsResult.rows[0],
+        instagramLikeContacts: {
+          total: Number(instagramLikeResult.rows[0].total_username_contacts),
+          comNegocio: Number(instagramLikeResult.rows[0].com_negocio),
+          semNegocio:
+            Number(instagramLikeResult.rows[0].total_username_contacts) -
+            Number(instagramLikeResult.rows[0].com_negocio),
+        },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro desconhecido.";
