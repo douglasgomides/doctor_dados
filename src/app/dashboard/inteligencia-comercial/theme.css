@@ -1,0 +1,89 @@
+/*
+ * Identidade visual própria da Inteligência Comercial: "briefing de analista"
+ * escuro, dourado/creme, tipografia serifada nos títulos — deliberadamente
+ * diferente do tema claro compartilhado pelo resto do app (ver
+ * src/app/globals.css). Isso é intencional (pedido explícito do usuário a
+ * partir de uma referência visual) e fica 100% contido dentro da classe
+ * .ic-theme, que só é aplicada nesta página — nada aqui vaza para o resto
+ * do admin.
+ *
+ * Truque: os componentes shadcn/ui (Button, Badge, Table, Tabs, Select,
+ * Input...) já usam classes Tailwind semânticas (bg-card, text-foreground,
+ * border-border, bg-primary, text-destructive etc.) que resolvem para
+ * `var(--card)`, `var(--foreground)` etc. — as MESMAS variáveis que
+ * src/app/globals.css define em :root. Como custom properties em CSS são
+ * resolvidas dinamicamente a partir do ancestral mais próximo, redefinir
+ * essas variáveis aqui dentro de .ic-theme é suficiente para "retemar" todos
+ * os componentes compartilhados sem tocar um único arquivo de componente.
+ */
+
+.ic-theme {
+  --background: #0a0a0a;
+  --foreground: #f5f0e8;
+  --card: #141414;
+  --card-foreground: #f5f0e8;
+  --popover: #141414;
+  --popover-foreground: #f5f0e8;
+  --primary: #c9a84c;
+  --primary-foreground: #16130a;
+  --secondary: #1c1c1c;
+  --secondary-foreground: #f5f0e8;
+  --muted: #1a1a1a;
+  --muted-foreground: #9a9284;
+  --accent: rgba(201, 168, 76, 0.12);
+  --accent-foreground: #c9a84c;
+  --destructive: #c1615a;
+  --border: #262626;
+  --input: #333333;
+  --ring: #c9a84c;
+  --chart-1: #c9a84c;
+  --chart-2: #8fa98c;
+  --chart-3: #7c93a9;
+  --chart-4: #b98f5e;
+  --chart-5: #9c8aa9;
+  --radius: 0.4rem;
+
+  /* Tokens extras, só usados nesta página (fora do conjunto shadcn padrão). */
+  --ic-border-soft: #1e1e1e;
+  --ic-sage: #8fa98c;
+  --ic-sage-bg: rgba(143, 169, 140, 0.12);
+  --ic-sage-border: rgba(143, 169, 140, 0.32);
+
+  background:
+    radial-gradient(ellipse 1100px 480px at 15% -12%, rgba(201, 168, 76, 0.07), transparent 60%),
+    var(--background);
+  color: var(--foreground);
+  min-height: 100%;
+}
+
+.ic-theme ::selection {
+  background: rgba(201, 168, 76, 0.25);
+  color: #f5f0e8;
+}
+
+.ic-theme ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.ic-theme ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ic-theme ::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+  border-radius: 4px;
+}
+.ic-theme ::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3a;
+}
+
+.ic-theme input::placeholder {
+  color: var(--muted-foreground);
+  opacity: 1;
+}
+
+/* Serifa de destaque (títulos, números-heróis) — reforça a identidade
+   "briefing premium" pedida na referência. Corpo/rótulos continuam na sans
+   já usada no resto do app (Sora), sem precisar carregar mais uma fonte. */
+.ic-font-display {
+  font-family: var(--font-cormorant), Georgia, serif;
+}
