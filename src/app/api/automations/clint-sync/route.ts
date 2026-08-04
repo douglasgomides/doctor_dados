@@ -20,13 +20,25 @@ export const maxDuration = 60;
 // parou; a próxima chamada com o mesmo resource continua dali. Chame
 // repetidamente (n8n em loop, ou manualmente) até done=true.
 //
-// POST /api/automations/clint-sync?resource=contacts|deals|origins|tags|messages|channels
-// "messages" sincroniza chats + mensagens (WhatsApp/Instagram) só dos
-// contatos com negócio associado — não existe endpoint da Clint pra listar
-// isso em massa, então cobrir os 61k+ contatos inteiros seria inviável.
+// POST /api/automations/clint-sync?resource=contacts|deals|origins|tags|messages|messages_nodeal|channels
+// "messages" sincroniza chats + mensagens (WhatsApp/Instagram) dos
+// contatos COM negócio associado (até 1500, mais recentes primeiro).
+// "messages_nodeal" cobre o restante: contatos sem negócio mas com
+// assinatura de lead só-Instagram (username preenchido, sem telefone) —
+// ex: quem comentou/mandou DM via ManyChat mas nunca virou negócio no
+// funil. Fila separada, resumível do mesmo jeito, mas sem o teto de 1500
+// porque é justamente esse universo (54k+) que ficava de fora antes.
 // "channels" sincroniza as contas de canal (WhatsApp/Instagram) e seu
 // status de conexão — só 3 registros, uma chamada só.
-const VALID_RESOURCES: ClintResource[] = ["contacts", "deals", "origins", "tags", "messages", "channels"];
+const VALID_RESOURCES: ClintResource[] = [
+  "contacts",
+  "deals",
+  "origins",
+  "tags",
+  "messages",
+  "messages_nodeal",
+  "channels",
+];
 
 export async function POST(req: NextRequest) {
   const secret = process.env.CLINT_SYNC_SECRET;

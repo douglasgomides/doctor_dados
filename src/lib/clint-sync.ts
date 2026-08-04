@@ -13,7 +13,14 @@ import {
   ClintMessage,
 } from "@/lib/clint";
 
-export type ClintResource = "contacts" | "deals" | "origins" | "tags" | "messages" | "channels";
+export type ClintResource =
+  | "contacts"
+  | "deals"
+  | "origins"
+  | "tags"
+  | "messages"
+  | "messages_nodeal"
+  | "channels";
 
 // Não existe endpoint da Clint pra listar chats/mensagens em massa — só por
 // contato/chat individualmente. Sincronizar os 61k+ contatos seria
@@ -406,6 +413,91 @@ async function syncMessages(timeBudgetMs: number): Promise<ClintSyncResult> {
 }
 
 /**
+ * Sincroniza chats + mensagens dos contatos SEM negócio associado, mas com
+ * "assinatura" de lead só-Instagram (username preenchido, sem telefone) —
+ * ex: quem comentou/mandou DM via ManyChat mas nunca virou negócio no
+ * funil. A sincronização "messages" (acima) só olha contatos COM negócio,
+ * então esse universo inteiro (54k+ contatos, 0% cobertos) ficava de fora
+ * por completo, não por causa do tamanho da janela. Mesmo padrão retomável,
+ * fila separada (resource "messages_nodeal") pra não interferir na outra.
+ */
+async function syncMessagesNoDeal(timeBudgetMs: number): Promise<ClintSyncResult> {
+  const state = await getSyncState("messages_nodeal");
+  const deadline = Date.now() + timeBudgetMs;
+  const startOffset = state.next_page || 1;
+
+  const CONTACT_FILTER = `
+    c.username IS NOT NULL AND c.full_phone IS NULL
+    AND NOT EXISTS (SELECT 1 FROM clint_deals d WHERE d.contact_id = c.id)
+  `;
+
+  try {
+    const totalResult = await pool.query(
+      `SELECT COUNT(*) AS total FROM clint_contacts c WHERE ${CONTACT_FILTER}`
+    );
+    const totalContacts = Number(totalResult.rows[0].total);
+
+    const batchResult = await pool.query(
+      `
+      SELECT c.id AS contact_id
+      FROM clint_contacts c
+      WHERE ${CONTACT_FILTER}
+      ORDER BY c.id
+      LIMIT 300 OFFSET $1
+      `,
+      [startOffset - 1]
+    );
+    const contactIds: string[] = batchResult.rows.map((r) => r.contact_id);
+
+    let processed = 0;
+    let recordsSynced = 0;
+
+    for (const contactId of contactIds) {
+      if (Date.now() >= deadline) break;
+
+      const chats = await fetchAllChatsForContact(contactId, deadline);
+      if (chats.length > 0) {
+        await upsertChats(chats);
+        for (const chat of chats) {
+          if (Date.now() >= deadline) break;
+          const messages = await fetchAllMessagesForChat(chat.id, deadline);
+          if (messages.length > 0) {
+            await upsertMessages(messages);
+            recordsSynced += messages.length;
+          }
+        }
+      }
+      processed += 1;
+    }
+
+    const newOffset = startOffset + processed;
+    const done = newOffset > totalContacts;
+
+    await updateSyncState("messages_nodeal", {
+      nextPage: done ? 1 : newOffset,
+      totalPages: totalContacts,
+      recordsSyncedLastRun: recordsSynced,
+      status: done ? "idle" : "in_progress",
+      lastError: null,
+      completed: done,
+    });
+
+    return {
+      resource: "messages_nodeal",
+      pagesSynced: processed,
+      recordsSynced,
+      done,
+      currentPage: newOffset,
+      totalPages: totalContacts,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await updateSyncState("messages_nodeal", { status: "error", lastError: message });
+    throw error;
+  }
+}
+
+/**
  * Sincroniza contatos ou negócios de forma retomável: processa páginas até
  * esgotar `timeBudgetMs` (pensado pro limite de execução de uma função
  * serverless) e grava até onde chegou em clint_sync_state. A próxima
@@ -574,6 +666,9 @@ export async function syncResource(
   }
   if (resource === "messages") {
     return syncMessages(timeBudgetMs);
+  }
+  if (resource === "messages_nodeal") {
+    return syncMessagesNoDeal(timeBudgetMs);
   }
   if (resource === "channels") {
     return syncChannelAccounts();
