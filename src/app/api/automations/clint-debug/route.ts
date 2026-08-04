@@ -97,12 +97,12 @@ export async function GET(req: NextRequest) {
         )
         SELECT
           COALESCE(o.name, 'Sem origem') AS origin_name,
-          do.fonte,
+          dorig.fonte,
           COUNT(*) AS total_contacts,
           COUNT(*) FILTER (WHERE r.rn <= 1500) AS dentro_da_janela_sincronizada
-        FROM deal_origin do
-        LEFT JOIN clint_origins o ON o.id = do.origin_id
-        LEFT JOIN ranked r ON r.contact_id = do.contact_id
+        FROM deal_origin dorig
+        LEFT JOIN clint_origins o ON o.id = dorig.origin_id
+        LEFT JOIN ranked r ON r.contact_id = dorig.contact_id
         GROUP BY 1, 2
         ORDER BY total_contacts DESC
         LIMIT 30
