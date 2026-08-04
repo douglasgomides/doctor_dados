@@ -18,10 +18,10 @@ import pool from "@/lib/db";
 // aqui é recalculado a partir das mensagens (excluindo COMMENT), não a
 // partir desses campos do chat. Comentários aparecem à parte, em `comments`.
 //
-// Suporta os mesmos filtros de data/produto do resumo geral
-// (?from=YYYY-MM-DD&to=YYYY-MM-DD&product=...), aplicados sobre o início da
-// conversa (first_customer_message_at do chat) e o produto do negócio mais
-// recente do contato.
+// Suporta os mesmos filtros de data/produto/funil do resumo geral
+// (?from=YYYY-MM-DD&to=YYYY-MM-DD&product=...&origin=...), aplicados sobre o
+// início da conversa (first_customer_message_at do chat) e o produto/funil
+// do negócio mais recente do contato.
 
 const UNANSWERED_LIMIT = 100;
 const MULTI_CHANNEL_LIMIT = 100;
@@ -31,6 +31,7 @@ interface AtendimentoFilters {
   from: string | null;
   to: string | null;
   product: string | null;
+  origin: string | null;
 }
 
 function parseFilters(req: NextRequest): AtendimentoFilters {
@@ -39,6 +40,7 @@ function parseFilters(req: NextRequest): AtendimentoFilters {
     from: sp.get("from") || null,
     to: sp.get("to") || null,
     product: sp.get("product") || null,
+    origin: sp.get("origin") || null,
   };
 }
 
@@ -62,6 +64,12 @@ function buildChatFilterClause(
       `EXISTS (SELECT 1 FROM clint_deals dp WHERE dp.contact_id = c.contact_id AND COALESCE(dp.fields->>'product_name', dp.fields->>'produto') = $${i++})`
     );
     params.push(filters.product);
+  }
+  if (filters.origin) {
+    conditions.push(
+      `EXISTS (SELECT 1 FROM clint_deals dfo WHERE dfo.contact_id = c.contact_id AND dfo.origin_id = (SELECT id FROM clint_origins WHERE name = $${i++} LIMIT 1))`
+    );
+    params.push(filters.origin);
   }
   return { sql: conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : "", params };
 }

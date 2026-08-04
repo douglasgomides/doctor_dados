@@ -316,24 +316,28 @@ function FilterBar({
   filters,
   onApply,
   productOptions,
+  funilOptions,
   loading,
 }: {
   filters: ClintFilters;
   onApply: (filters: ClintFilters) => void;
   productOptions: string[];
+  funilOptions: string[];
   loading: boolean;
 }) {
   const [from, setFrom] = useState(filters.from ?? "");
   const [to, setTo] = useState(filters.to ?? "");
   const [product, setProduct] = useState(filters.product ?? "todos");
+  const [origin, setOrigin] = useState(filters.origin ?? "todos");
 
-  const hasActiveFilters = Boolean(filters.from || filters.to || filters.product);
+  const hasActiveFilters = Boolean(filters.from || filters.to || filters.product || filters.origin);
 
   function apply() {
     onApply({
       from: from || undefined,
       to: to || undefined,
       product: product !== "todos" ? product : undefined,
+      origin: origin !== "todos" ? origin : undefined,
     });
   }
 
@@ -341,6 +345,7 @@ function FilterBar({
     setFrom("");
     setTo("");
     setProduct("todos");
+    setOrigin("todos");
     onApply({});
   }
 
@@ -374,6 +379,22 @@ function FilterBar({
             {productOptions.map((p) => (
               <SelectItem key={p} value={p}>
                 {p}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-[11px] text-muted-foreground uppercase tracking-wide">Funil</label>
+        <Select value={origin} onValueChange={setOrigin}>
+          <SelectTrigger className="w-[220px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os funis</SelectItem>
+            {funilOptions.map((f) => (
+              <SelectItem key={f} value={f}>
+                {f}
               </SelectItem>
             ))}
           </SelectContent>
@@ -827,6 +848,7 @@ export default function InteligenciaComercialPage() {
         filters={filters}
         onApply={setFilters}
         productOptions={data.productOptions}
+        funilOptions={data.originOptions}
         loading={loading}
       />
 

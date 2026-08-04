@@ -5,10 +5,14 @@ import pool from "@/lib/db";
 // para o dashboard de Inteligência Comercial. Protegido por sessão master —
 // já coberto pelo prefixo /api/dashboard em src/proxy.ts.
 //
-// Aceita filtros globais via query string: ?from=AAAA-MM-DD&to=AAAA-MM-DD&product=...
+// Aceita filtros globais via query string: ?from=AAAA-MM-DD&to=AAAA-MM-DD&product=...&origin=...
 // `from`/`to` filtram por clint_created_at (negócios e contatos, cada um
 // pela própria data de criação). `product` filtra só os negócios (não faz
 // sentido pra contatos) por COALESCE(fields->>'product_name', fields->>'produto').
+// `origin` filtra por funil (é o mesmo conceito — a Clint chama de "funil"
+// na própria interface; a gente já sincronizava isso como "origem"/
+// clint_origins). Se aplica tanto a negócios (origin_id direto) quanto a
+// contatos (via EXISTS em algum negócio do contato nesse funil).
 
 const WEEKS_BACK = 12;
 const MIN_VOLUME_FOR_RATE = 8; // volume mínimo pra uma origem/produto entrar nos insights de "melhor/pior"
@@ -50,6 +54,7 @@ interface DashboardFilters {
   from: string | null;
   to: string | null;
   product: string | null;
+  origin: string | null;
 }
 
 function winRate(won: number, lost: number): number | null {
@@ -68,19 +73,23 @@ function parseFilters(req: NextRequest): DashboardFilters {
     from: params.get("from") || null,
     to: params.get("to") || null,
     product: params.get("product") || null,
+    origin: params.get("origin") || null,
   };
 }
 
 /**
  * Gera o fragmento "AND ..." (com placeholders $N a partir de `startIndex`)
  * pra filtrar uma tabela com coluna `clint_created_at` por data, e
- * opcionalmente `fields->>'product_name'/'produto'` por produto (só faz
- * sentido pra clint_deals — não passe `includeProduct` pra clint_contacts).
+ * opcionalmente por produto e por funil (origem). `table` decide como cada
+ * filtro se aplica: produto só faz sentido pra negócios (tem
+ * fields->>'product_name' direto); funil filtra negócios por origin_id
+ * direto, e contatos por "tem algum negócio nesse funil" (contato não tem
+ * origin_id próprio).
  */
 function buildFilterClause(
   filters: DashboardFilters,
   startIndex: number,
-  includeProduct: boolean
+  table: "deals" | "contacts"
 ): { sql: string; params: unknown[] } {
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -94,9 +103,19 @@ function buildFilterClause(
     conditions.push(`clint_created_at < ($${i++}::date + INTERVAL '1 day')`);
     params.push(filters.to);
   }
-  if (includeProduct && filters.product) {
+  if (table === "deals" && filters.product) {
     conditions.push(`COALESCE(fields->>'product_name', fields->>'produto') = $${i++}`);
     params.push(filters.product);
+  }
+  if (filters.origin) {
+    if (table === "deals") {
+      conditions.push(`origin_id = (SELECT id FROM clint_origins WHERE name = $${i++} LIMIT 1)`);
+    } else {
+      conditions.push(
+        `EXISTS (SELECT 1 FROM clint_deals dfo WHERE dfo.contact_id = id AND dfo.origin_id = (SELECT id FROM clint_origins WHERE name = $${i++} LIMIT 1))`
+      );
+    }
+    params.push(filters.origin);
   }
 
   return { sql: conditions.length > 0 ? conditions.map((c) => `AND ${c}`).join(" ") : "", params };
@@ -105,8 +124,8 @@ function buildFilterClause(
 export async function GET(req: NextRequest) {
   try {
     const filters = parseFilters(req);
-    const dealFilter = buildFilterClause(filters, 1, true);
-    const contactFilter = buildFilterClause(filters, 1, false);
+    const dealFilter = buildFilterClause(filters, 1, "deals");
+    const contactFilter = buildFilterClause(filters, 1, "contacts");
 
     const [
       overviewResult,
@@ -122,6 +141,7 @@ export async function GET(req: NextRequest) {
       cycleTimeResult,
       originProductResult,
       productOptionsResult,
+      originOptionsResult,
     ] = await Promise.all([
       pool.query(
         `
@@ -185,7 +205,7 @@ export async function GET(req: NextRequest) {
           COALESCE(SUM(d.value) FILTER (WHERE d.status = 'WON'), 0) AS revenue
         FROM clint_deals d
         LEFT JOIN clint_origins o ON o.id = d.origin_id
-        WHERE 1=1 ${dealFilter.sql.replace(/clint_created_at/g, "d.clint_created_at").replace(/fields->>/g, "d.fields->>")}
+        WHERE 1=1 ${dealFilter.sql.replace(/clint_created_at/g, "d.clint_created_at").replace(/fields->>/g, "d.fields->>").replace(/origin_id/g, "d.origin_id")}
         GROUP BY d.origin_id, o.name
         ORDER BY total DESC
         `,
@@ -254,7 +274,7 @@ export async function GET(req: NextRequest) {
           COALESCE(SUM(d.value), 0) AS revenue
         FROM clint_deals d
         LEFT JOIN clint_origins o ON o.id = d.origin_id
-        WHERE d.status = 'WON' ${dealFilter.sql.replace(/clint_created_at/g, "d.clint_created_at").replace(/fields->>/g, "d.fields->>")}
+        WHERE d.status = 'WON' ${dealFilter.sql.replace(/clint_created_at/g, "d.clint_created_at").replace(/fields->>/g, "d.fields->>").replace(/origin_id/g, "d.origin_id")}
         GROUP BY 1, 2
         ORDER BY revenue DESC
         LIMIT 15
@@ -267,6 +287,7 @@ export async function GET(req: NextRequest) {
         WHERE COALESCE(fields->>'product_name', fields->>'produto') IS NOT NULL
         ORDER BY 1
       `),
+      pool.query(`SELECT name FROM clint_origins ORDER BY name`),
     ]);
 
     const overview = overviewResult.rows[0];
@@ -363,6 +384,7 @@ export async function GET(req: NextRequest) {
       insightSections,
       actions,
       productOptions: productOptionsResult.rows.map((r) => r.product as string),
+      originOptions: originOptionsResult.rows.map((r) => r.name as string),
     });
   } catch (error) {
     console.error("Erro ao agregar dados da Clint:", error);

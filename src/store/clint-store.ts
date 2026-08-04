@@ -88,12 +88,14 @@ export interface ClintDashboardData {
   insightSections: ClintInsightSection[];
   actions: ClintAction[];
   productOptions: string[];
+  originOptions: string[];
 }
 
 export interface ClintFilters {
   from?: string;
   to?: string;
   product?: string;
+  origin?: string;
 }
 
 export interface ClintDealRow {
@@ -219,6 +221,7 @@ function appendFilters(query: URLSearchParams, filters?: ClintFilters) {
   if (filters?.from) query.set("from", filters.from);
   if (filters?.to) query.set("to", filters.to);
   if (filters?.product) query.set("product", filters.product);
+  if (filters?.origin) query.set("origin", filters.origin);
 }
 
 export const useClintStore = create<ClintState>()((set) => ({
