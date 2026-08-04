@@ -297,11 +297,41 @@ async function upsertMessages(messages: ClintMessage[]): Promise<void> {
 }
 
 /**
+ * Busca todas as páginas de chats de um contato (a Clint pagina em blocos
+ * de até 200) — sem isso, contatos com mais de 200 chats ficavam truncados.
+ */
+async function fetchAllChatsForContact(contactId: string, deadline: number): Promise<ClintChat[]> {
+  const chats: ClintChat[] = [];
+  let page = 1;
+  for (;;) {
+    const response = await fetchChatsForContact(contactId, page, 200);
+    chats.push(...response.data);
+    if (!response.has_next || Date.now() >= deadline) break;
+    page += 1;
+  }
+  return chats;
+}
+
+/** Idem, para todas as páginas de mensagens de um chat. */
+async function fetchAllMessagesForChat(chatId: string, deadline: number): Promise<ClintMessage[]> {
+  const messages: ClintMessage[] = [];
+  let page = 1;
+  for (;;) {
+    const response = await fetchMessagesForChat(chatId, page, 200);
+    messages.push(...response.data);
+    if (!response.has_next || Date.now() >= deadline) break;
+    page += 1;
+  }
+  return messages;
+}
+
+/**
  * Sincroniza chats + mensagens dos contatos com negócio associado (ver
  * MESSAGES_SYNC_CONTACT_LIMIT), de forma retomável: busca um lote de IDs de
- * contato a partir do offset salvo, processa um por um (1 chamada de chats
- * + 1 chamada de mensagens por chat) até esgotar o orçamento de tempo, e
- * grava quantos processou. A próxima chamada continua do offset seguinte.
+ * contato a partir do offset salvo, processa um por um (todas as páginas de
+ * chats + todas as páginas de mensagens de cada chat) até esgotar o
+ * orçamento de tempo, e grava quantos processou. A próxima chamada continua
+ * do offset seguinte.
  */
 async function syncMessages(timeBudgetMs: number): Promise<ClintSyncResult> {
   const state = await getSyncState("messages");
@@ -333,14 +363,15 @@ async function syncMessages(timeBudgetMs: number): Promise<ClintSyncResult> {
     for (const contactId of contactIds) {
       if (Date.now() >= deadline) break;
 
-      const chatsResponse = await fetchChatsForContact(contactId);
-      if (chatsResponse.data.length > 0) {
-        await upsertChats(chatsResponse.data);
-        for (const chat of chatsResponse.data) {
-          const messagesResponse = await fetchMessagesForChat(chat.id);
-          if (messagesResponse.data.length > 0) {
-            await upsertMessages(messagesResponse.data);
-            recordsSynced += messagesResponse.data.length;
+      const chats = await fetchAllChatsForContact(contactId, deadline);
+      if (chats.length > 0) {
+        await upsertChats(chats);
+        for (const chat of chats) {
+          if (Date.now() >= deadline) break;
+          const messages = await fetchAllMessagesForChat(chat.id, deadline);
+          if (messages.length > 0) {
+            await upsertMessages(messages);
+            recordsSynced += messages.length;
           }
         }
       }
