@@ -221,7 +221,29 @@ export async function GET() {
       ? Number(cycleTimeResult.rows[0].avg_days_to_win)
       : null;
 
-    const insights = buildInsights({ origins, products, avgDaysToWin, overview });
+    const contactsWeekly = toWeeklySeries(contactsWeeklyResult.rows);
+    const dealsCreatedWeekly = toWeeklySeries(dealsCreatedWeeklyResult.rows);
+    const dealsWonWeekly = toWeeklySeries(dealsWonWeeklyResult.rows);
+
+    const insightSections = buildInsightSections({
+      origins,
+      products,
+      fontes,
+      avgDaysToWin,
+      overview,
+      contactsWeekly,
+      dealsCreatedWeekly,
+      dealsWonWeekly,
+      contactsWithoutDeal: Number(withDealRow.without_deal),
+    });
+
+    const actions = buildActions({
+      origins,
+      products,
+      overview,
+      contactsWithoutDeal: Number(withDealRow.without_deal),
+      avgDaysToWin,
+    });
 
     return NextResponse.json({
       overview: {
@@ -237,18 +259,15 @@ export async function GET() {
         contactsWithDeal: Number(withDealRow.with_deal),
         contactsWithoutDeal: Number(withDealRow.without_deal),
       },
-      trends: {
-        contactsWeekly: toWeeklySeries(contactsWeeklyResult.rows),
-        dealsCreatedWeekly: toWeeklySeries(dealsCreatedWeeklyResult.rows),
-        dealsWonWeekly: toWeeklySeries(dealsWonWeeklyResult.rows),
-      },
+      trends: { contactsWeekly, dealsCreatedWeekly, dealsWonWeekly },
       funnel: stages,
       origins,
       products,
       fontes,
       tags,
       originProductCross: originProduct,
-      insights,
+      insightSections,
+      actions,
     });
   } catch (error) {
     console.error("Erro ao agregar dados da Clint:", error);
@@ -256,62 +275,229 @@ export async function GET() {
   }
 }
 
-function buildInsights({
+function qualifyByRate<T extends { total: number; won: number; lost: number }>(
+  rows: T[]
+): (T & { rate: number })[] {
+  return rows
+    .filter((r) => r.total >= MIN_VOLUME_FOR_RATE)
+    .map((r) => ({ ...r, rate: winRate(r.won, r.lost) }))
+    .filter((r): r is T & { rate: number } => r.rate !== null);
+}
+
+function weekDelta(series: WeeklyPoint[]): { current: number; previous: number; pct: number | null } | null {
+  if (series.length < 2) return null;
+  const current = series[series.length - 1].count;
+  const previous = series[series.length - 2].count;
+  const pct = previous > 0 ? Math.round(((current - previous) / previous) * 100) : null;
+  return { current, previous, pct };
+}
+
+interface InsightSection {
+  title: string;
+  items: string[];
+}
+
+function buildInsightSections({
   origins,
   products,
+  fontes,
   avgDaysToWin,
   overview,
+  contactsWeekly,
+  dealsCreatedWeekly,
+  dealsWonWeekly,
+  contactsWithoutDeal,
 }: {
   origins: OriginRow[];
   products: ProductRow[];
+  fontes: { fonte: string; total: number; won: number; lost: number }[];
   avgDaysToWin: number | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   overview: any;
-}): string[] {
-  const insights: string[] = [];
+  contactsWeekly: WeeklyPoint[];
+  dealsCreatedWeekly: WeeklyPoint[];
+  dealsWonWeekly: WeeklyPoint[];
+  contactsWithoutDeal: number;
+}): InsightSection[] {
+  const sections: InsightSection[] = [];
 
-  const qualifiedOrigins = origins
-    .filter((o) => o.total >= MIN_VOLUME_FOR_RATE)
-    .map((o) => ({ ...o, rate: winRate(o.won, o.lost) }))
-    .filter((o): o is OriginRow & { rate: number } => o.rate !== null);
-
+  // --- Origem: quem converte melhor e pior ---
+  const qualifiedOrigins = qualifyByRate(origins);
   if (qualifiedOrigins.length > 1) {
-    const avgRate =
-      qualifiedOrigins.reduce((sum, o) => sum + o.rate, 0) / qualifiedOrigins.length;
-    const best = [...qualifiedOrigins].sort((a, b) => b.rate - a.rate)[0];
-    const worst = [...qualifiedOrigins].sort((a, b) => a.rate - b.rate)[0];
+    const avgRate = qualifiedOrigins.reduce((sum, o) => sum + o.rate, 0) / qualifiedOrigins.length;
+    const sorted = [...qualifiedOrigins].sort((a, b) => b.rate - a.rate);
+    const best = sorted[0];
+    const worst = sorted[sorted.length - 1];
+    const items: string[] = [];
 
-    if (best.rate > avgRate * 1.15) {
-      const diff = Math.round(((best.rate - avgRate) / avgRate) * 100);
-      insights.push(
-        `Origem "${best.originName}" converte ${diff}% acima da média (${Math.round(best.rate * 100)}% vs. ${Math.round(avgRate * 100)}% médio) — vale priorizar investimento aqui.`
+    items.push(
+      `"${best.originName}" é a origem que mais converte: ${Math.round(best.rate * 100)}% (${best.won} ganhos de ${best.won + best.lost} decididos), gerando ${formatBRLServer(best.revenue)} em receita.`
+    );
+    if (worst.rate < avgRate * 0.6 && worst.originName !== best.originName) {
+      items.push(
+        `"${worst.originName}" converte bem abaixo da média (${Math.round(worst.rate * 100)}% vs. ${Math.round(avgRate * 100)}% médio), com volume relevante (${worst.total} negócios) — vale entender o motivo antes de investir mais aqui.`
       );
     }
-    if (worst.rate < avgRate * 0.6 && worst.total >= MIN_VOLUME_FOR_RATE * 2) {
-      insights.push(
-        `Origem "${worst.originName}" converte bem abaixo da média (${Math.round(worst.rate * 100)}% vs. ${Math.round(avgRate * 100)}%), com volume relevante (${worst.total} negócios) — vale investigar o motivo.`
+    const byVolume = [...origins].sort((a, b) => b.total - a.total)[0];
+    if (byVolume && byVolume.originName !== best.originName) {
+      items.push(
+        `"${byVolume.originName}" é a origem com mais volume (${byVolume.total} negócios), mas não é a que mais converte — pode valer revisar a qualificação desses leads.`
       );
+    }
+    sections.push({ title: "Origem que mais converte", items });
+  }
+
+  // --- Canal/fonte mais quente ---
+  const qualifiedFontes = qualifyByRate(fontes.map((f) => ({ ...f })));
+  if (qualifiedFontes.length > 0) {
+    const bestFonte = [...qualifiedFontes].sort((a, b) => b.rate - a.rate)[0];
+    sections.push({
+      title: "Canal de captação mais quente",
+      items: [
+        `"${bestFonte.fonte}" é o canal com melhor taxa de fechamento entre os que têm volume relevante: ${Math.round(bestFonte.rate * 100)}% (${bestFonte.won} de ${bestFonte.won + bestFonte.lost} decididos).`,
+      ],
+    });
+  }
+
+  // --- Produtos ---
+  if (products.length > 0) {
+    const items = [
+      `"${products[0].product}" é o produto que mais gera receita: ${formatBRLServer(products[0].revenue)} em ${products[0].total} venda(s).`,
+    ];
+    if (products.length > 1) {
+      items.push(
+        `Em seguida vem "${products[1].product}", com ${formatBRLServer(products[1].revenue)} em ${products[1].total} venda(s).`
+      );
+    }
+    sections.push({ title: "Produtos que mais vendem", items });
+  }
+
+  // --- Tendência semanal ---
+  const contactsDelta = weekDelta(contactsWeekly);
+  const dealsDelta = weekDelta(dealsCreatedWeekly);
+  const wonDelta = weekDelta(dealsWonWeekly);
+  const trendItems: string[] = [];
+  if (contactsDelta && contactsDelta.pct !== null) {
+    trendItems.push(
+      `Contatos novos: ${contactsDelta.current} essa semana (${contactsDelta.pct >= 0 ? "+" : ""}${contactsDelta.pct}% vs. semana anterior).`
+    );
+  }
+  if (dealsDelta && dealsDelta.pct !== null) {
+    trendItems.push(
+      `Negócios criados: ${dealsDelta.current} essa semana (${dealsDelta.pct >= 0 ? "+" : ""}${dealsDelta.pct}% vs. semana anterior).`
+    );
+  }
+  if (wonDelta && wonDelta.pct !== null) {
+    trendItems.push(
+      `Negócios ganhos: ${wonDelta.current} essa semana (${wonDelta.pct >= 0 ? "+" : ""}${wonDelta.pct}% vs. semana anterior).`
+    );
+  }
+  if (trendItems.length > 0) sections.push({ title: "Tendência da semana", items: trendItems });
+
+  // --- Ciclo e pontos de atenção ---
+  const attentionItems: string[] = [];
+  if (avgDaysToWin !== null) {
+    attentionItems.push(`Ciclo médio de fechamento (criação → ganho): ${Math.round(avgDaysToWin)} dias.`);
+  }
+  const totalContacts = Number(overview.total_contacts);
+  if (totalContacts > 0) {
+    const pctSemNegocio = Math.round((contactsWithoutDeal / totalContacts) * 100);
+    if (pctSemNegocio > 50) {
+      attentionItems.push(
+        `${pctSemNegocio}% dos contatos (${contactsWithoutDeal.toLocaleString("pt-BR")}) nunca tiveram um negócio criado — base grande sem oportunidade comercial associada.`
+      );
+    }
+  }
+  if (attentionItems.length > 0) sections.push({ title: "Pontos de atenção", items: attentionItems });
+
+  return sections;
+}
+
+interface ActionItem {
+  titulo: string;
+  porque: string;
+  oque: string;
+  impacto: "Alto" | "Médio" | "Baixo";
+  prazo: string;
+}
+
+function buildActions({
+  origins,
+  products,
+  overview,
+  contactsWithoutDeal,
+  avgDaysToWin,
+}: {
+  origins: OriginRow[];
+  products: ProductRow[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  overview: any;
+  contactsWithoutDeal: number;
+  avgDaysToWin: number | null;
+}): ActionItem[] {
+  const actions: ActionItem[] = [];
+  const qualifiedOrigins = qualifyByRate(origins);
+
+  if (qualifiedOrigins.length > 1) {
+    const avgRate = qualifiedOrigins.reduce((sum, o) => sum + o.rate, 0) / qualifiedOrigins.length;
+    const sorted = [...qualifiedOrigins].sort((a, b) => b.rate - a.rate);
+    const best = sorted[0];
+    const worst = sorted[sorted.length - 1];
+
+    if (best.rate > avgRate * 1.15) {
+      actions.push({
+        titulo: `Priorizar investimento em "${best.originName}"`,
+        porque: `Converte ${Math.round(best.rate * 100)}%, acima da média de ${Math.round(avgRate * 100)}%, com ${best.total} negócios já gerados.`,
+        oque: "Aumentar o volume de leads dessa origem (orçamento de anúncio, conteúdo, ou esforço de captação) mantendo a mesma qualificação de entrada.",
+        impacto: "Alto",
+        prazo: "Esta semana",
+      });
+    }
+    if (worst.rate < avgRate * 0.6 && worst.total >= MIN_VOLUME_FOR_RATE * 2) {
+      actions.push({
+        titulo: `Investigar baixa conversão em "${worst.originName}"`,
+        porque: `Converte só ${Math.round(worst.rate * 100)}% (vs. ${Math.round(avgRate * 100)}% médio), mas já tem ${worst.total} negócios — volume relevante sendo desperdiçado.`,
+        oque: "Revisar o processo de qualificação e atendimento inicial desses leads antes de continuar investindo nessa origem no mesmo ritmo.",
+        impacto: "Médio",
+        prazo: "Próximas 2 semanas",
+      });
     }
   }
 
   if (products.length > 0) {
-    const topProduct = products[0];
-    insights.push(
-      `"${topProduct.product}" é o produto que mais gera receita fechada: R$ ${Math.round(topProduct.revenue).toLocaleString("pt-BR")} em ${topProduct.total} venda(s).`
-    );
+    actions.push({
+      titulo: `Reforçar oferta de "${products[0].product}"`,
+      porque: `É o produto que mais gera receita (${formatBRLServer(products[0].revenue)} em ${products[0].total} venda(s)) — ainda tem espaço pra crescer se aparecer mais nas conversas comerciais.`,
+      oque: "Garantir que o time comercial mencione essa oferta primeiro em conversas com leads qualificados, e priorizar conteúdo/anúncio sobre ela.",
+      impacto: "Alto",
+      prazo: "Este mês",
+    });
   }
 
-  if (avgDaysToWin !== null) {
-    insights.push(`Ciclo médio de fechamento (criação → ganho): ${Math.round(avgDaysToWin)} dias.`);
+  const totalContacts = Number(overview.total_contacts);
+  if (totalContacts > 0 && contactsWithoutDeal / totalContacts > 0.5) {
+    actions.push({
+      titulo: "Criar campanha de reengajamento da base",
+      porque: `${contactsWithoutDeal.toLocaleString("pt-BR")} contatos (mais da metade da base) nunca tiveram um negócio aberto.`,
+      oque: "Segmentar essa base por tag/origem e disparar uma campanha de reativação (WhatsApp ou e-mail) oferecendo o produto de entrada.",
+      impacto: "Médio",
+      prazo: "Este mês",
+    });
   }
 
-  const totalDecided = Number(overview.won_deals) + Number(overview.lost_deals);
-  if (totalDecided > 0) {
-    const overallRate = Number(overview.won_deals) / totalDecided;
-    insights.push(
-      `Taxa de conversão geral (ganhos ÷ decididos): ${Math.round(overallRate * 100)}% (${overview.won_deals} ganhos, ${overview.lost_deals} perdidos, ${overview.open_deals} em aberto).`
-    );
+  if (avgDaysToWin !== null && avgDaysToWin > 14) {
+    actions.push({
+      titulo: "Encurtar o ciclo de fechamento",
+      porque: `O ciclo médio hoje é de ${Math.round(avgDaysToWin)} dias entre a criação do negócio e o fechamento — quanto mais longo, maior a chance de o lead esfriar.`,
+      oque: "Mapear em qual etapa do funil os negócios mais demoram e criar um gatilho de follow-up automático pra essa etapa específica.",
+      impacto: "Médio",
+      prazo: "Próximas 2 semanas",
+    });
   }
 
-  return insights;
+  return actions;
+}
+
+function formatBRLServer(value: number): string {
+  return `R$ ${Math.round(value).toLocaleString("pt-BR")}`;
 }
