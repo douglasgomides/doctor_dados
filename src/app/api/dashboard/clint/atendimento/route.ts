@@ -85,7 +85,8 @@ export async function GET(req: NextRequest) {
           (SELECT COUNT(*) FROM filtered_chats WHERE first_customer_message_at IS NOT NULL AND first_response_at IS NULL) AS nunca_respondido,
           (SELECT AVG(EXTRACT(EPOCH FROM (first_response_at - first_customer_message_at)) / 60)
              FROM filtered_chats
-             WHERE first_response_at IS NOT NULL AND first_customer_message_at IS NOT NULL) AS avg_response_minutes
+             WHERE first_response_at IS NOT NULL AND first_customer_message_at IS NOT NULL
+               AND first_response_at >= first_customer_message_at) AS avg_response_minutes
         `,
         chatFilter.params
       ),
@@ -97,7 +98,10 @@ export async function GET(req: NextRequest) {
           COUNT(*) AS total,
           COUNT(*) FILTER (WHERE c.first_customer_message_at IS NOT NULL AND c.first_response_at IS NULL) AS nunca_respondido,
           AVG(EXTRACT(EPOCH FROM (c.first_response_at - c.first_customer_message_at)) / 60)
-            FILTER (WHERE c.first_response_at IS NOT NULL AND c.first_customer_message_at IS NOT NULL) AS avg_response_minutes
+            FILTER (
+              WHERE c.first_response_at IS NOT NULL AND c.first_customer_message_at IS NOT NULL
+                AND c.first_response_at >= c.first_customer_message_at
+            ) AS avg_response_minutes
         FROM filtered_chats c
         LEFT JOIN LATERAL (
           SELECT origin_id FROM clint_deals dd WHERE dd.contact_id = c.contact_id ORDER BY clint_created_at DESC LIMIT 1
@@ -159,7 +163,10 @@ export async function GET(req: NextRequest) {
           COUNT(*) AS total,
           COUNT(*) FILTER (WHERE c.first_customer_message_at IS NOT NULL AND c.first_response_at IS NULL) AS nunca_respondido,
           AVG(EXTRACT(EPOCH FROM (c.first_response_at - c.first_customer_message_at)) / 60)
-            FILTER (WHERE c.first_response_at IS NOT NULL AND c.first_customer_message_at IS NOT NULL) AS avg_response_minutes
+            FILTER (
+              WHERE c.first_response_at IS NOT NULL AND c.first_customer_message_at IS NOT NULL
+                AND c.first_response_at >= c.first_customer_message_at
+            ) AS avg_response_minutes
         FROM filtered_chats c
         LEFT JOIN clint_channel_accounts ch ON ch.id = c.channel_account_id
         WHERE c.first_customer_message_at IS NOT NULL

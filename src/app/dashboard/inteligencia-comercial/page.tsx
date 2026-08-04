@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useClintStore,
   ClintOriginRow,
@@ -43,10 +43,12 @@ import {
   Clock,
   AlertTriangle,
   ListChecks,
-  RefreshCw,
   Filter,
   X,
 } from "lucide-react";
+
+/** Intervalo de atualização automática dos dados (resumo, negócios, atendimento). */
+const AUTO_REFRESH_MS = 30_000;
 import { AreaChart, Area, ResponsiveContainer, XAxis, Tooltip } from "recharts";
 
 function formatBRL(value: number): string {
@@ -305,17 +307,19 @@ const STATUS_VARIANT: Record<string, "default" | "outline" | "destructive"> = {
   LOST: "destructive",
 };
 
-/** Filtro global de data e produto — afeta resumo, negócios e atendimento ao mesmo tempo. */
+/**
+ * Filtro global de data e produto — afeta resumo, negócios e atendimento ao
+ * mesmo tempo. Os dados em si se atualizam sozinhos (ver AUTO_REFRESH_MS em
+ * cada aba), sem precisar de botão de atualizar manual.
+ */
 function FilterBar({
   filters,
   onApply,
-  onRefresh,
   productOptions,
   loading,
 }: {
   filters: ClintFilters;
   onApply: (filters: ClintFilters) => void;
-  onRefresh: () => void;
   productOptions: string[];
   loading: boolean;
 }) {
@@ -384,10 +388,6 @@ function FilterBar({
           Limpar
         </Button>
       )}
-      <Button size="sm" variant="ghost" onClick={onRefresh} disabled={loading} className="ml-auto">
-        <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        Atualizar dados
-      </Button>
     </div>
   );
 }
@@ -396,14 +396,29 @@ function NegociosTab({ filters }: { filters: ClintFilters }) {
   const { deals, dealsLoading, dealsError, fetchDeals } = useClintStore();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("todos");
+  const searchRef = useRef(search);
+  const statusRef = useRef(status);
+  searchRef.current = search;
+  statusRef.current = status;
+
+  function currentParams() {
+    return {
+      search: searchRef.current || undefined,
+      status: statusRef.current !== "todos" ? statusRef.current : undefined,
+      offset: 0,
+      ...filters,
+    };
+  }
 
   useEffect(() => {
-    fetchDeals({ search: search || undefined, status: status !== "todos" ? status : undefined, offset: 0, ...filters });
+    fetchDeals(currentParams());
+    const id = setInterval(() => fetchDeals(currentParams()), AUTO_REFRESH_MS);
+    return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchDeals, filters]);
 
   function applyFilters() {
-    fetchDeals({ search: search || undefined, status: status !== "todos" ? status : undefined, offset: 0, ...filters });
+    fetchDeals(currentParams());
   }
 
   return (
@@ -495,6 +510,8 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
 
   useEffect(() => {
     fetchAtendimento(filters);
+    const id = setInterval(() => fetchAtendimento(filters), AUTO_REFRESH_MS);
+    return () => clearInterval(id);
   }, [fetchAtendimento, filters]);
 
   if (atendimentoLoading && !atendimento) {
@@ -720,11 +737,9 @@ export default function InteligenciaComercialPage() {
 
   useEffect(() => {
     fetchData(filters);
+    const id = setInterval(() => fetchData(filters), AUTO_REFRESH_MS);
+    return () => clearInterval(id);
   }, [fetchData, filters]);
-
-  function handleRefresh() {
-    setFilters((f) => ({ ...f }));
-  }
 
   if (loading && !data) {
     return (
@@ -772,7 +787,6 @@ export default function InteligenciaComercialPage() {
       <FilterBar
         filters={filters}
         onApply={setFilters}
-        onRefresh={handleRefresh}
         productOptions={data.productOptions}
         loading={loading}
       />
