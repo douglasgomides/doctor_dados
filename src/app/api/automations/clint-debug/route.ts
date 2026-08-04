@@ -28,6 +28,36 @@ export async function GET(req: NextRequest) {
   const liveChatId = req.nextUrl.searchParams.get("liveChatId");
   const liveContactId = req.nextUrl.searchParams.get("liveContactId");
   const searchContact = req.nextUrl.searchParams.get("searchContact");
+  const syncStatus = req.nextUrl.searchParams.get("syncStatus");
+
+  // Modo "status": mostra o estado de cada sincronização (contacts, deals,
+  // messages, etc — next_page/total_pages/status/last_completed_at) e o
+  // total de linhas já gravadas em cada tabela — pra saber se a
+  // sincronização de contatos/negócios já rodou até o fim, ou se ainda tem
+  // gente de fora (ex: leads de Instagram que nunca chegaram no nosso banco).
+  if (syncStatus) {
+    try {
+      const [stateResult, countsResult] = await Promise.all([
+        pool.query(
+          `SELECT resource, next_page, total_pages, total_count, status, last_run_at, last_completed_at, last_error FROM clint_sync_state ORDER BY resource`
+        ),
+        pool.query(`
+          SELECT
+            (SELECT COUNT(*) FROM clint_contacts) AS contacts,
+            (SELECT COUNT(*) FROM clint_deals) AS deals,
+            (SELECT COUNT(*) FROM clint_chats) AS chats,
+            (SELECT COUNT(*) FROM clint_messages) AS messages
+        `),
+      ]);
+      return NextResponse.json({
+        syncState: stateResult.rows,
+        rowCounts: countsResult.rows[0],
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido.";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
 
   // Modo "live": chama a API REST oficial da Clint (a mesma que já usamos
   // pra sincronizar) direto pra esse chat_id, sem passar pelo nosso banco —
