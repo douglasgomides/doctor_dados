@@ -233,6 +233,42 @@ export interface ClintAtendimentoData {
   };
 }
 
+export interface ClintBrevoCampaign {
+  id: string;
+  name: string;
+  subject: string | null;
+  type: string;
+  status: string;
+  sentDate: string | null;
+  sent: number | null;
+  delivered: number | null;
+  uniqueViews: number | null;
+  uniqueClicks: number | null;
+  unsubscriptions: number | null;
+  opensRatePct: number | null;
+  clickRatePct: number | null;
+}
+
+export interface ClintBrevoData {
+  overview: {
+    totalContacts: number;
+    totalBlacklisted: number;
+    totalCampaignsSent: number;
+    totalSent: number;
+    totalUniqueOpens: number;
+    totalUniqueClicks: number;
+    avgOpenRatePct: number | null;
+    avgClickRatePct: number | null;
+  };
+  crossReference: {
+    totalClintWithEmail: number;
+    matchedInBrevo: number;
+    matchedPct: number | null;
+    blacklistedMatched: number;
+  };
+  campaigns: ClintBrevoCampaign[];
+}
+
 interface ClintState {
   data: ClintDashboardData | null;
   loading: boolean;
@@ -250,6 +286,11 @@ interface ClintState {
   atendimentoLoading: boolean;
   atendimentoError: string | null;
   fetchAtendimento: (filters?: ClintFilters) => Promise<void>;
+
+  brevo: ClintBrevoData | null;
+  brevoLoading: boolean;
+  brevoError: string | null;
+  fetchBrevo: () => Promise<void>;
 }
 
 function appendFilters(query: URLSearchParams, filters?: ClintFilters) {
@@ -326,6 +367,25 @@ export const useClintStore = create<ClintState>()((set) => ({
       set({ atendimento: data, atendimentoLoading: false });
     } catch {
       set({ atendimentoError: "Erro de conexão com o servidor.", atendimentoLoading: false });
+    }
+  },
+
+  brevo: null,
+  brevoLoading: false,
+  brevoError: null,
+
+  fetchBrevo: async () => {
+    set({ brevoLoading: true, brevoError: null });
+    try {
+      const res = await fetch(`/api/dashboard/clint/brevo`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) {
+        set({ brevoError: data.error || "Erro ao carregar dados da Brevo.", brevoLoading: false });
+        return;
+      }
+      set({ brevo: data, brevoLoading: false });
+    } catch {
+      set({ brevoError: "Erro de conexão com o servidor.", brevoLoading: false });
     }
   },
 }));

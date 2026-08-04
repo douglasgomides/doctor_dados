@@ -373,4 +373,67 @@ export async function runMigrations(): Promise<void> {
       synced_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
+
+  // --- Brevo (marketing por e-mail) ---
+  // Espelho local dos contatos e campanhas da Brevo, sincronizado via
+  // POST /api/automations/brevo-sync (mesmo padrão retomável do Clint). O
+  // cruzamento com leads da Clint é feito por e-mail (LOWER(email) em
+  // ambas as tabelas), calculado sob demanda nas rotas do dashboard — não
+  // guardamos o vínculo aqui porque um e-mail pode aparecer/desaparecer
+  // dos dois lados entre sincronizações.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS brevo_contacts (
+      id BIGINT PRIMARY KEY,
+      email VARCHAR(255),
+      attributes JSONB NOT NULL DEFAULT '{}',
+      list_ids INTEGER[] NOT NULL DEFAULT '{}',
+      email_blacklisted BOOLEAN NOT NULL DEFAULT false,
+      sms_blacklisted BOOLEAN NOT NULL DEFAULT false,
+      whatsapp_blacklisted BOOLEAN NOT NULL DEFAULT false,
+      brevo_created_at TIMESTAMPTZ,
+      brevo_modified_at TIMESTAMPTZ,
+      synced_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_brevo_contacts_email ON brevo_contacts(LOWER(email));`
+  );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_brevo_contacts_list_ids ON brevo_contacts USING GIN (list_ids);`
+  );
+
+  // Estatísticas por campanha (globalStats da Brevo — sent/delivered/opens/
+  // clicks/unsubscriptions agregados), não por contato: a Brevo só expõe
+  // engajamento por contato individual (1 chamada por contato), inviável
+  // pra sincronizar em massa. `stats` guarda o objeto GetCampaignStats
+  // inteiro da Brevo.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS brevo_campaigns (
+      id BIGINT PRIMARY KEY,
+      name VARCHAR(500),
+      subject VARCHAR(500),
+      type VARCHAR(20),
+      status VARCHAR(20),
+      sent_date TIMESTAMPTZ,
+      stats JSONB NOT NULL DEFAULT '{}',
+      brevo_created_at TIMESTAMPTZ,
+      brevo_modified_at TIMESTAMPTZ,
+      synced_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_brevo_campaigns_sent_date ON brevo_campaigns(sent_date);`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS brevo_sync_state (
+      resource VARCHAR(20) PRIMARY KEY,
+      next_page INTEGER NOT NULL DEFAULT 1,
+      total_pages INTEGER,
+      total_count INTEGER,
+      records_synced_last_run INTEGER NOT NULL DEFAULT 0,
+      status VARCHAR(20) NOT NULL DEFAULT 'idle',
+      last_error TEXT,
+      last_run_at TIMESTAMP,
+      last_completed_at TIMESTAMP
+    );
+  `);
 }

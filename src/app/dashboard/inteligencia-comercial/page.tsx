@@ -50,6 +50,9 @@ import {
   Bot,
   ShieldAlert,
   MessagesSquare,
+  Mail,
+  MailWarning,
+  Link2,
 } from "lucide-react";
 import "./theme.css";
 
@@ -1100,6 +1103,156 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
   );
 }
 
+/**
+ * Aba de marketing por e-mail (Brevo) — separada do atendimento porque é
+ * outro tipo de ação (campanha em massa, não conversa 1:1) e outro público
+ * de decisão. O cruzamento com a Clint é por e-mail (não existe ID
+ * compartilhado entre as duas plataformas) — ver GET /api/dashboard/clint/brevo.
+ */
+function BrevoTab() {
+  const { brevo, brevoLoading, brevoError, fetchBrevo } = useClintStore();
+
+  useEffect(() => {
+    fetchBrevo();
+    const id = setInterval(() => fetchBrevo(), AUTO_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [fetchBrevo]);
+
+  if (brevoLoading && !brevo) {
+    return (
+      <div className="flex items-center justify-center h-48 mt-4">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (brevoError) {
+    return <p className="text-destructive mt-4">{brevoError}</p>;
+  }
+
+  if (!brevo) return null;
+
+  const { overview, crossReference, campaigns } = brevo;
+
+  if (overview.totalContacts === 0 && campaigns.length === 0) {
+    return (
+      <div className="rounded-[var(--radius)] border border-border bg-card p-6 mt-4 text-sm text-muted-foreground">
+        Nenhum dado da Brevo sincronizado ainda. Rode a sincronização com{" "}
+        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">resource=brevo_contacts</code> e{" "}
+        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">resource=brevo_campaigns</code> pra ver dados
+        aqui.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 mt-4">
+      <div className="space-y-4">
+        <SectionHeader icon={<Mail className="h-4 w-4" />} title="Marketing por e-mail — Brevo" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            icon={<Users2 className="h-4 w-4" />}
+            label="Contatos na Brevo"
+            value={overview.totalContacts.toLocaleString("pt-BR")}
+            subtitle={
+              overview.totalBlacklisted > 0
+                ? `${overview.totalBlacklisted.toLocaleString("pt-BR")} descadastrado(s)`
+                : undefined
+            }
+          />
+          <StatCard
+            icon={<ListChecks className="h-4 w-4" />}
+            label="Campanhas enviadas"
+            value={overview.totalCampaignsSent.toLocaleString("pt-BR")}
+            subtitle={`${overview.totalSent.toLocaleString("pt-BR")} e-mails no total`}
+          />
+          <StatCard
+            icon={<TrendingUp className="h-4 w-4" />}
+            label="Taxa média de abertura"
+            value={overview.avgOpenRatePct !== null ? `${Math.round(overview.avgOpenRatePct)}%` : "—"}
+          />
+          <StatCard
+            icon={<Target className="h-4 w-4" />}
+            label="Taxa média de clique"
+            value={overview.avgClickRatePct !== null ? `${Math.round(overview.avgClickRatePct)}%` : "—"}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-[var(--radius)] border border-border bg-card p-5 space-y-4">
+        <SectionHeader
+          icon={<Link2 className="h-3.5 w-3.5" />}
+          title="Cruzamento com leads da Clint (por e-mail)"
+        />
+        <SplitBar
+          a={crossReference.matchedInBrevo}
+          b={Math.max(0, crossReference.totalClintWithEmail - crossReference.matchedInBrevo)}
+          aLabel="Leads da Clint também na Brevo"
+          bLabel="Só na Clint"
+        />
+        {crossReference.blacklistedMatched > 0 && (
+          <div className="flex items-start gap-2 rounded-[var(--radius)] border border-destructive/35 bg-destructive/[0.06] p-3 text-sm">
+            <MailWarning className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+            <p className="text-muted-foreground">
+              <span className="font-medium text-destructive">
+                {crossReference.blacklistedMatched.toLocaleString("pt-BR")} lead(s)
+              </span>{" "}
+              da Clint estão descadastrados (blacklist) na Brevo — não recebem mais campanha por e-mail, mesmo
+              aparecendo como lead ativo no CRM.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {campaigns.length > 0 && (
+        <div className="rounded-[var(--radius)] border border-border overflow-hidden overflow-x-auto">
+          <div className="px-5 pt-4 pb-2">
+            <SectionHeader title="Últimas campanhas enviadas" />
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border">
+                <TableHead className="text-muted-foreground">Campanha</TableHead>
+                <TableHead className="text-muted-foreground">Enviada</TableHead>
+                <TableHead className="text-right text-muted-foreground">Enviados</TableHead>
+                <TableHead className="text-right text-muted-foreground">Abertura</TableHead>
+                <TableHead className="text-right text-muted-foreground">Cliques</TableHead>
+                <TableHead className="text-right text-muted-foreground">Descadastros</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {campaigns.map((c) => (
+                <TableRow key={c.id} className="border-[var(--ic-border-soft)] hover:bg-primary/[0.04]">
+                  <TableCell className="font-medium text-foreground max-w-[280px] truncate">{c.name}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {c.sentDate ? timeSince(c.sentDate) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right text-foreground">
+                    {c.sent !== null ? c.sent.toLocaleString("pt-BR") : "—"}
+                  </TableCell>
+                  <TableCell className="text-right text-foreground">
+                    {c.opensRatePct !== null ? `${Math.round(c.opensRatePct)}%` : "—"}
+                  </TableCell>
+                  <TableCell className="text-right text-foreground">
+                    {c.clickRatePct !== null ? `${Math.round(c.clickRatePct)}%` : "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {c.unsubscriptions && c.unsubscriptions > 0 ? (
+                      <Badge variant="destructive">{c.unsubscriptions}</Badge>
+                    ) : (
+                      "0"
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InteligenciaComercialPage() {
   const { data, loading, error, fetchData } = useClintStore();
   const [filters, setFilters] = useState<ClintFilters>({});
@@ -1207,6 +1360,7 @@ export default function InteligenciaComercialPage() {
                 { value: "resumo", label: "Resumo" },
                 { value: "negocios", label: "Negócios" },
                 { value: "atendimento", label: "Atendimento" },
+                { value: "brevo", label: "Marketing (Brevo)" },
                 { value: "origem-produto", label: "Origem & Produto" },
                 { value: "contatos", label: "Contatos" },
                 { value: "acoes", label: "Ações a Tomar" },
@@ -1313,6 +1467,10 @@ export default function InteligenciaComercialPage() {
 
           <TabsContent value="atendimento">
             <AtendimentoTab filters={filters} />
+          </TabsContent>
+
+          <TabsContent value="brevo">
+            <BrevoTab />
           </TabsContent>
 
           <TabsContent value="origem-produto" className="space-y-7 mt-5">
