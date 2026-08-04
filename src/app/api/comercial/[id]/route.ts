@@ -96,6 +96,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ analise: mapRow(row) });
     }
 
+    fields.push(`updated_at = NOW()`);
     values.push(id);
     const result = await pool.query(
       `UPDATE comercial_analises SET ${fields.join(", ")} WHERE id = $${paramIndex} RETURNING *`,

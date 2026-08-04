@@ -60,7 +60,7 @@ export default function RoteirosPage() {
 
 function RoteirosPageInner() {
   const user = useAuthStore((s) => s.user);
-  const { roteiros, fetchRoteiros, submitRoteiro, reviewRoteiro, deleteRoteiro } =
+  const { roteiros, loading, fetchRoteiros, submitRoteiro, reviewRoteiro, deleteRoteiro } =
     useRoteirosStore();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -444,9 +444,11 @@ function RoteirosPageInner() {
                 {filtrados.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={isMaster ? 7 : 6} className="text-center text-muted-foreground py-8">
-                      {roteiros.length === 0
-                        ? "Nenhum roteiro enviado ainda."
-                        : "Nenhum roteiro encontrado com esse filtro."}
+                      {loading
+                        ? "Carregando..."
+                        : roteiros.length === 0
+                          ? "Nenhum roteiro enviado ainda."
+                          : "Nenhum roteiro encontrado com esse filtro."}
                     </TableCell>
                   </TableRow>
                 )}

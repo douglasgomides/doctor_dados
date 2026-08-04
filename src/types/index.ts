@@ -257,7 +257,9 @@ export type PendenciaTipo =
   | "reuniao_ajustar"
   | "comercial_ajustar"
   | "cadencia_roteiros"
-  | "cadencia_reunioes";
+  | "cadencia_reunioes"
+  | "comercial_negociacao_parada"
+  | "cliente_inativo";
 
 export const PENDENCIA_TIPO_LABELS: Record<PendenciaTipo, string> = {
   roteiro_ajustar: "Roteiro pendente de ajuste",
@@ -265,6 +267,8 @@ export const PENDENCIA_TIPO_LABELS: Record<PendenciaTipo, string> = {
   comercial_ajustar: "Call comercial pendente de ajuste",
   cadencia_roteiros: "Abaixo da meta de roteiros/semana",
   cadencia_reunioes: "Abaixo da meta de reuniões/mês",
+  comercial_negociacao_parada: "Negociação parada",
+  cliente_inativo: "Cliente sem atividade recente",
 };
 
 export interface Pendencia {

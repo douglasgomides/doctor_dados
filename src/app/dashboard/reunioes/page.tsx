@@ -67,7 +67,7 @@ export default function ReunioesPage() {
 
 function ReunioesPageInner() {
   const user = useAuthStore((s) => s.user);
-  const { reunioes, fetchReunioes, submitReuniao, reviewReuniao, deleteReuniao } =
+  const { reunioes, loading, fetchReunioes, submitReuniao, reviewReuniao, deleteReuniao } =
     useReunioesStore();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -410,9 +410,11 @@ function ReunioesPageInner() {
                 {filtrados.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={isMaster ? 7 : 6} className="text-center text-muted-foreground py-8">
-                      {reunioes.length === 0
-                        ? "Nenhuma reunião registrada ainda."
-                        : "Nenhuma reunião encontrada com esse filtro."}
+                      {loading
+                        ? "Carregando..."
+                        : reunioes.length === 0
+                          ? "Nenhuma reunião registrada ainda."
+                          : "Nenhuma reunião encontrada com esse filtro."}
                     </TableCell>
                   </TableRow>
                 )}

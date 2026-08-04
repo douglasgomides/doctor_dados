@@ -5,6 +5,26 @@ export interface ClienteBasico {
   nome: string;
 }
 
+// Cliente novo sem responsável fica invisível pros alertas de pendência
+// (que dependem do WhatsApp do responsável pra saber quem avisar) até
+// alguém entrar em Clientes e atribuir manualmente — na prática, isso podia
+// levar dias. Distribui em round-robin entre os membros da equipe
+// (role='team') com menos clientes ativos hoje, então todo cliente novo já
+// nasce com dono. Sem equipe cadastrada ainda, cai em null (comportamento
+// anterior) — a auto-atribuição pressupõe que Usuários já tem gente real.
+async function proximoResponsavelRoundRobin(): Promise<string | null> {
+  const result = await pool.query(
+    `SELECT u.id
+     FROM dash_users u
+     LEFT JOIN clientes c ON c.responsavel_id = u.id AND c.is_test = false
+     WHERE u.role = 'team'
+     GROUP BY u.id, u.created_at
+     ORDER BY COUNT(c.id) ASC, u.created_at ASC
+     LIMIT 1`
+  );
+  return result.rows.length > 0 ? result.rows[0].id : null;
+}
+
 // Toda submissão de roteiro/reunião carrega um nome de cliente em texto
 // livre (o time não deveria precisar cadastrar o médico antes de validar um
 // conteúdo). Essa função garante que exista um registro em `clientes`
@@ -20,9 +40,11 @@ export async function findOrCreateClienteId(rawNome: string): Promise<string> {
   if (existing.rows.length > 0) return existing.rows[0].id;
 
   try {
-    const inserted = await pool.query("INSERT INTO clientes (nome) VALUES ($1) RETURNING id", [
-      nome,
-    ]);
+    const responsavelId = await proximoResponsavelRoundRobin();
+    const inserted = await pool.query(
+      "INSERT INTO clientes (nome, responsavel_id) VALUES ($1, $2) RETURNING id",
+      [nome, responsavelId]
+    );
     return inserted.rows[0].id;
   } catch (error) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
