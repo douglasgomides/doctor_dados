@@ -2,19 +2,30 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 
 // Métricas de atendimento (WhatsApp/Instagram, via chats/mensagens
-// sincronizados — ver src/lib/clint-sync.ts, resources "messages" e
-// "channels"): tempo de resposta, leads nunca respondidos (com o texto da
-// última mensagem), quebra por canal, canais desconectados, e contatos
-// conversando em mais de um canal ao mesmo tempo. Protegido pelo prefixo
-// /api/dashboard em src/proxy.ts (sessão master).
+// sincronizados — ver src/lib/clint-sync.ts, resources "messages",
+// "messages_nodeal" e "channels"): tempo de resposta, leads nunca
+// respondidos (com o texto da última mensagem), quebra por canal, canais
+// desconectados, e contatos conversando em mais de um canal ao mesmo tempo.
+// Protegido pelo prefixo /api/dashboard em src/proxy.ts (sessão master).
+//
+// IMPORTANTE: mensagens diretas (DM) e comentários de Instagram
+// (content_type = 'COMMENT') são coisas bem diferentes — um comentário
+// costuma ser respondido automaticamente pelo ManyChat via DM, não é uma
+// conversa em si. Os campos first_customer_message_at/first_response_at
+// que vêm prontos da Clint no chat tratam o comentário como se fosse a
+// "primeira mensagem do cliente", o que distorce tempo de resposta e status
+// de "nunca respondido". Por isso todo tempo de resposta/status de resposta
+// aqui é recalculado a partir das mensagens (excluindo COMMENT), não a
+// partir desses campos do chat. Comentários aparecem à parte, em `comments`.
 //
 // Suporta os mesmos filtros de data/produto do resumo geral
 // (?from=YYYY-MM-DD&to=YYYY-MM-DD&product=...), aplicados sobre o início da
-// conversa (first_customer_message_at) e o produto do negócio mais recente
-// do contato.
+// conversa (first_customer_message_at do chat) e o produto do negócio mais
+// recente do contato.
 
 const UNANSWERED_LIMIT = 100;
 const MULTI_CHANNEL_LIMIT = 100;
+const RECENT_COMMENTS_LIMIT = 50;
 
 interface AtendimentoFilters {
   from: string | null;
@@ -60,10 +71,33 @@ export async function GET(req: NextRequest) {
     const filters = parseFilters(req);
     const chatFilter = buildChatFilterClause(filters, 1);
     const limitIndex = chatFilter.params.length + 1;
-    const filteredChatsCte = `
+
+    // filtered_chats: chats dentro do filtro de data/produto.
+    // direct_pairs: por chat, primeira mensagem do cliente e primeira
+    //   resposta (do time/bot), olhando só mensagens que NÃO são comentário.
+    // comment_counts: quantos comentários cada chat recebeu.
+    const statsCte = `
       WITH filtered_chats AS (
         SELECT c.* FROM clint_chats c
         ${chatFilter.sql}
+      ),
+      direct_pairs AS (
+        SELECT
+          m.chat_id,
+          MIN(m.clint_created_at) FILTER (WHERE m.type = 'CUSTOMER') AS first_customer_at,
+          MIN(m.clint_created_at) FILTER (WHERE m.type != 'CUSTOMER') AS first_user_at,
+          COUNT(*) AS direct_count
+        FROM clint_messages m
+        JOIN filtered_chats fc ON fc.id = m.chat_id
+        WHERE m.content_type IS DISTINCT FROM 'COMMENT'
+        GROUP BY m.chat_id
+      ),
+      comment_counts AS (
+        SELECT m.chat_id, COUNT(*) AS comment_count
+        FROM clint_messages m
+        JOIN filtered_chats fc ON fc.id = m.chat_id
+        WHERE m.content_type = 'COMMENT'
+        GROUP BY m.chat_id
       )
     `;
 
@@ -74,40 +108,42 @@ export async function GET(req: NextRequest) {
       channelsResult,
       byChannelResult,
       multiChannelResult,
+      recentCommentsResult,
     ] = await Promise.all([
       pool.query(
         `
-        ${filteredChatsCte}
+        ${statsCte}
         SELECT
           (SELECT COUNT(*) FROM filtered_chats) AS total_chats,
-          (SELECT COUNT(*) FROM clint_messages m JOIN filtered_chats fc ON fc.id = m.chat_id) AS total_messages,
-          (SELECT COUNT(*) FROM filtered_chats WHERE first_customer_message_at IS NOT NULL) AS total_com_contato,
-          (SELECT COUNT(*) FROM filtered_chats WHERE first_customer_message_at IS NOT NULL AND first_response_at IS NULL) AS nunca_respondido,
-          (SELECT AVG(EXTRACT(EPOCH FROM (first_response_at - first_customer_message_at)) / 60)
-             FROM filtered_chats
-             WHERE first_response_at IS NOT NULL AND first_customer_message_at IS NOT NULL
-               AND first_response_at >= first_customer_message_at) AS avg_response_minutes
+          (SELECT COALESCE(SUM(direct_count), 0) FROM direct_pairs) AS total_direct_messages,
+          (SELECT COALESCE(SUM(comment_count), 0) FROM comment_counts) AS total_comments,
+          (SELECT COUNT(*) FROM direct_pairs WHERE first_customer_at IS NOT NULL) AS total_com_contato,
+          (SELECT COUNT(*) FROM direct_pairs
+             WHERE first_customer_at IS NOT NULL AND (first_user_at IS NULL OR first_user_at < first_customer_at)
+          ) AS nunca_respondido,
+          (SELECT AVG(EXTRACT(EPOCH FROM (first_user_at - first_customer_at)) / 60)
+             FROM direct_pairs
+             WHERE first_user_at IS NOT NULL AND first_customer_at IS NOT NULL AND first_user_at >= first_customer_at
+          ) AS avg_response_minutes
         `,
         chatFilter.params
       ),
       pool.query(
         `
-        ${filteredChatsCte}
+        ${statsCte}
         SELECT
           COALESCE(orig.name, 'Sem origem') AS origin_name,
           COUNT(*) AS total,
-          COUNT(*) FILTER (WHERE c.first_customer_message_at IS NOT NULL AND c.first_response_at IS NULL) AS nunca_respondido,
-          AVG(EXTRACT(EPOCH FROM (c.first_response_at - c.first_customer_message_at)) / 60)
-            FILTER (
-              WHERE c.first_response_at IS NOT NULL AND c.first_customer_message_at IS NOT NULL
-                AND c.first_response_at >= c.first_customer_message_at
-            ) AS avg_response_minutes
+          COUNT(*) FILTER (WHERE dp.first_customer_at IS NOT NULL AND (dp.first_user_at IS NULL OR dp.first_user_at < dp.first_customer_at)) AS nunca_respondido,
+          AVG(EXTRACT(EPOCH FROM (dp.first_user_at - dp.first_customer_at)) / 60)
+            FILTER (WHERE dp.first_user_at IS NOT NULL AND dp.first_customer_at IS NOT NULL AND dp.first_user_at >= dp.first_customer_at) AS avg_response_minutes
         FROM filtered_chats c
+        JOIN direct_pairs dp ON dp.chat_id = c.id
         LEFT JOIN LATERAL (
           SELECT origin_id FROM clint_deals dd WHERE dd.contact_id = c.contact_id ORDER BY clint_created_at DESC LIMIT 1
         ) d ON true
         LEFT JOIN clint_origins orig ON orig.id = d.origin_id
-        WHERE c.first_customer_message_at IS NOT NULL
+        WHERE dp.first_customer_at IS NOT NULL
         GROUP BY 1
         ORDER BY total DESC
         LIMIT 15
@@ -116,11 +152,13 @@ export async function GET(req: NextRequest) {
       ),
       pool.query(
         `
-        ${filteredChatsCte},
+        ${statsCte},
         unanswered AS (
-          SELECT c.id AS chat_id, c.contact_id, c.channel_account_id, c.first_customer_message_at, c.last_message_at, c.status
+          SELECT c.id AS chat_id, c.contact_id, c.channel_account_id, dp.first_customer_at AS first_customer_message_at,
+                 c.last_message_at, c.status
           FROM filtered_chats c
-          WHERE c.first_customer_message_at IS NOT NULL AND c.first_response_at IS NULL
+          JOIN direct_pairs dp ON dp.chat_id = c.id
+          WHERE dp.first_customer_at IS NOT NULL AND (dp.first_user_at IS NULL OR dp.first_user_at < dp.first_customer_at)
           ORDER BY c.last_message_at DESC NULLS LAST
           LIMIT $${limitIndex}
         )
@@ -146,7 +184,9 @@ export async function GET(req: NextRequest) {
         ) d ON true
         LEFT JOIN clint_origins orig ON orig.id = d.origin_id
         LEFT JOIN LATERAL (
-          SELECT content FROM clint_messages m WHERE m.chat_id = u.chat_id ORDER BY clint_created_at DESC LIMIT 1
+          SELECT content FROM clint_messages m
+          WHERE m.chat_id = u.chat_id AND m.content_type IS DISTINCT FROM 'COMMENT'
+          ORDER BY clint_created_at DESC LIMIT 1
         ) lm ON true
         ORDER BY u.last_message_at DESC NULLS LAST
         `,
@@ -155,21 +195,21 @@ export async function GET(req: NextRequest) {
       pool.query(`SELECT id, name, type, status, identifier FROM clint_channel_accounts ORDER BY name`),
       pool.query(
         `
-        ${filteredChatsCte}
+        ${statsCte}
         SELECT
           COALESCE(ch.name, 'Canal desconhecido') AS channel_name,
           COALESCE(ch.type, '—') AS channel_type,
           ch.status AS channel_status,
           COUNT(*) AS total,
-          COUNT(*) FILTER (WHERE c.first_customer_message_at IS NOT NULL AND c.first_response_at IS NULL) AS nunca_respondido,
-          AVG(EXTRACT(EPOCH FROM (c.first_response_at - c.first_customer_message_at)) / 60)
-            FILTER (
-              WHERE c.first_response_at IS NOT NULL AND c.first_customer_message_at IS NOT NULL
-                AND c.first_response_at >= c.first_customer_message_at
-            ) AS avg_response_minutes
+          COALESCE(SUM(cc.comment_count), 0) AS total_comments,
+          COUNT(*) FILTER (WHERE dp.first_customer_at IS NOT NULL AND (dp.first_user_at IS NULL OR dp.first_user_at < dp.first_customer_at)) AS nunca_respondido,
+          AVG(EXTRACT(EPOCH FROM (dp.first_user_at - dp.first_customer_at)) / 60)
+            FILTER (WHERE dp.first_user_at IS NOT NULL AND dp.first_customer_at IS NOT NULL AND dp.first_user_at >= dp.first_customer_at) AS avg_response_minutes
         FROM filtered_chats c
+        LEFT JOIN direct_pairs dp ON dp.chat_id = c.id
+        LEFT JOIN comment_counts cc ON cc.chat_id = c.id
         LEFT JOIN clint_channel_accounts ch ON ch.id = c.channel_account_id
-        WHERE c.first_customer_message_at IS NOT NULL
+        WHERE dp.first_customer_at IS NOT NULL OR cc.comment_count > 0
         GROUP BY 1, 2, 3
         ORDER BY total DESC
         `,
@@ -177,7 +217,7 @@ export async function GET(req: NextRequest) {
       ),
       pool.query(
         `
-        ${filteredChatsCte},
+        ${statsCte},
         per_contact AS (
           SELECT contact_id, COUNT(DISTINCT channel_account_id) AS canais, MAX(last_message_at) AS ultima_atividade
           FROM filtered_chats
@@ -201,6 +241,27 @@ export async function GET(req: NextRequest) {
         `,
         [...chatFilter.params, MULTI_CHANNEL_LIMIT]
       ),
+      pool.query(
+        `
+        ${statsCte}
+        SELECT
+          m.id,
+          m.chat_id,
+          m.content,
+          m.clint_created_at,
+          co.name AS contact_name,
+          ch.name AS channel_name,
+          ch.type AS channel_type
+        FROM clint_messages m
+        JOIN filtered_chats fc ON fc.id = m.chat_id
+        LEFT JOIN clint_contacts co ON co.id = fc.contact_id
+        LEFT JOIN clint_channel_accounts ch ON ch.id = fc.channel_account_id
+        WHERE m.content_type = 'COMMENT'
+        ORDER BY m.clint_created_at DESC
+        LIMIT $${limitIndex}
+        `,
+        [...chatFilter.params, RECENT_COMMENTS_LIMIT]
+      ),
     ]);
 
     const overview = overviewResult.rows[0];
@@ -210,7 +271,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       overview: {
         totalChats: Number(overview.total_chats),
-        totalMessages: Number(overview.total_messages),
+        totalDirectMessages: Number(overview.total_direct_messages),
+        totalComments: Number(overview.total_comments),
         totalComContato,
         nuncaRespondido,
         pctNuncaRespondido: totalComContato > 0 ? nuncaRespondido / totalComContato : null,
@@ -228,6 +290,7 @@ export async function GET(req: NextRequest) {
         channelType: r.channel_type,
         channelStatus: r.channel_status,
         total: Number(r.total),
+        totalComments: Number(r.total_comments),
         nuncaRespondido: Number(r.nunca_respondido),
         avgResponseMinutes: r.avg_response_minutes ? Number(r.avg_response_minutes) : null,
       })),
@@ -259,6 +322,18 @@ export async function GET(req: NextRequest) {
         channelNames: (r.nomes_canais as (string | null)[]).filter(Boolean),
         lastActivityAt: r.ultima_atividade,
       })),
+      comments: {
+        total: Number(overview.total_comments),
+        recent: recentCommentsResult.rows.map((r) => ({
+          id: r.id,
+          chatId: r.chat_id,
+          content: r.content,
+          createdAt: r.clint_created_at,
+          contactName: r.contact_name || "(sem nome)",
+          channelName: r.channel_name,
+          channelType: r.channel_type,
+        })),
+      },
     });
   } catch (error) {
     console.error("Erro ao agregar dados de atendimento da Clint:", error);

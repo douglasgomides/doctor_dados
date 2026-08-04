@@ -160,17 +160,28 @@ export interface ClintMultiChannelContact {
   lastActivityAt: string | null;
 }
 
+export interface ClintRecentComment {
+  id: string;
+  chatId: string;
+  content: string | null;
+  createdAt: string;
+  contactName: string;
+  channelName: string | null;
+  channelType: string | null;
+}
+
 export interface ClintAtendimentoData {
   overview: {
     totalChats: number;
-    totalMessages: number;
+    totalDirectMessages: number;
+    totalComments: number;
     totalComContato: number;
     nuncaRespondido: number;
     pctNuncaRespondido: number | null;
     avgResponseMinutes: number | null;
   };
   channels: ClintChannelAccount[];
-  byChannel: ClintChannelStat[];
+  byChannel: (ClintChannelStat & { totalComments: number })[];
   byOrigin: {
     originName: string;
     total: number;
@@ -179,6 +190,10 @@ export interface ClintAtendimentoData {
   }[];
   unanswered: ClintUnansweredChat[];
   multiChannelContacts: ClintMultiChannelContact[];
+  comments: {
+    total: number;
+    recent: ClintRecentComment[];
+  };
 }
 
 interface ClintState {

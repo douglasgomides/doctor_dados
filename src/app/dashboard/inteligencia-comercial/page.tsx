@@ -528,7 +528,7 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
 
   if (!atendimento) return null;
 
-  const { overview, byOrigin, byChannel, channels, unanswered, multiChannelContacts } = atendimento;
+  const { overview, byOrigin, byChannel, channels, unanswered, multiChannelContacts, comments } = atendimento;
   const disconnectedChannels = channels.filter((c) => c.status !== "CONNECTED");
 
   if (overview.totalChats === 0 && channels.length === 0) {
@@ -559,7 +559,7 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           icon={<MessageCircleWarning className="h-4 w-4" />}
           label="Nunca respondidos"
@@ -575,6 +575,7 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
           icon={<Clock className="h-4 w-4" />}
           label="Tempo médio de 1ª resposta"
           value={formatMinutes(overview.avgResponseMinutes)}
+          subtitle="Só mensagens diretas — comentários não entram nessa conta"
         />
         <StatCard
           icon={<Users2 className="h-4 w-4" />}
@@ -583,8 +584,15 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
         />
         <StatCard
           icon={<Users2 className="h-4 w-4" />}
-          label="Mensagens sincronizadas"
-          value={overview.totalMessages.toLocaleString("pt-BR")}
+          label="Mensagens diretas"
+          value={overview.totalDirectMessages.toLocaleString("pt-BR")}
+          subtitle="Conversa de verdade (DM), sem contar comentários"
+        />
+        <StatCard
+          icon={<MessageCircleWarning className="h-4 w-4" />}
+          label="Comentários no Instagram"
+          value={overview.totalComments.toLocaleString("pt-BR")}
+          subtitle="Comentário em post — contado à parte da conversa"
         />
       </div>
 
@@ -632,6 +640,7 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
                 <TableHead>Canal</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Chats</TableHead>
+                <TableHead className="text-right">Comentários</TableHead>
                 <TableHead className="text-right">Nunca respondidos</TableHead>
                 <TableHead className="text-right">Tempo médio de resposta</TableHead>
               </TableRow>
@@ -655,6 +664,7 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
                     )}
                   </TableCell>
                   <TableCell className="text-right">{c.total}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">{c.totalComments}</TableCell>
                   <TableCell className="text-right">
                     {c.nuncaRespondido > 0 ? <Badge variant="destructive">{c.nuncaRespondido}</Badge> : "0"}
                   </TableCell>
@@ -663,6 +673,35 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
               ))}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {comments.recent.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <MessageCircleWarning className="h-4 w-4 text-primary" />
+            Comentários recentes no Instagram ({comments.total.toLocaleString("pt-BR")})
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Comentários em posts, separados das mensagens diretas — o ManyChat costuma responder por DM
+            automaticamente, então isso aqui não conta como &quot;atendimento&quot; feito por uma pessoa.
+          </p>
+          <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+            {comments.recent.map((cm) => (
+              <div key={cm.id} className="rounded-lg border border-border bg-background p-2.5 text-sm">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="font-medium">{cm.contactName}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {timeSince(cm.createdAt)}
+                    {cm.channelName ? ` · ${cm.channelName}` : ""}
+                  </span>
+                </div>
+                {cm.content && (
+                  <p className="text-sm text-muted-foreground italic truncate">&quot;{cm.content}&quot;</p>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
