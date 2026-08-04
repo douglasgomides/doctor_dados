@@ -368,7 +368,7 @@ export async function GET(req: NextRequest) {
         SELECT
           COALESCE(
             fields->>'motivo_perda', fields->>'motivo_da_perda', fields->>'lost_reason',
-            fields->>'motivo', lost_status_id, '(sem motivo registrado)'
+            fields->>'motivo', lost_status_id::text, '(sem motivo registrado)'
           ) AS reason,
           COUNT(*) AS total,
           COALESCE(SUM(value), 0) AS value
