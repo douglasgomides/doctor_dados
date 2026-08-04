@@ -60,6 +60,33 @@ export interface ClintAction {
   prazo: string;
 }
 
+export interface ClintLossReasonRow {
+  reason: string;
+  total: number;
+  value: number;
+}
+
+export interface ClintSellerRow {
+  seller: string;
+  total: number;
+  revenue: number;
+  avgTicket: number;
+}
+
+export interface ClintCycleTimePoint {
+  week: string;
+  avgDays: number;
+}
+
+export interface ClintPreviousPeriodOverview {
+  totalDeals: number;
+  wonDeals: number;
+  lostDeals: number;
+  totalRevenue: number;
+  totalContacts: number;
+  winRate: number | null;
+}
+
 export interface ClintDashboardData {
   overview: {
     totalContacts: number;
@@ -74,12 +101,17 @@ export interface ClintDashboardData {
     contactsWithDeal: number;
     contactsWithoutDeal: number;
   };
+  previousPeriod: ClintPreviousPeriodOverview | null;
   trends: {
     contactsWeekly: ClintWeeklyPoint[];
     dealsCreatedWeekly: ClintWeeklyPoint[];
     dealsWonWeekly: ClintWeeklyPoint[];
   };
   funnel: ClintStageRow[];
+  lossByStage: ClintStageRow[];
+  lossReasons: ClintLossReasonRow[];
+  bySeller: ClintSellerRow[];
+  cycleTimeTrend: ClintCycleTimePoint[];
   origins: ClintOriginRow[];
   products: ClintProductRow[];
   fontes: ClintFonteRow[];

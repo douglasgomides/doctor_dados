@@ -68,6 +68,11 @@ function formatDateTime(iso: string | null): string {
   return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+function pctDelta(current: number, previous: number): number | null {
+  if (previous === 0) return current > 0 ? 100 : null;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
 function formatMinutes(minutes: number | null): string {
   if (minutes === null) return "—";
   if (minutes < 60) return `${Math.round(minutes)} min`;
@@ -111,6 +116,21 @@ function SectionHeader({
   );
 }
 
+function DeltaBadge({ pct, invert = false }: { pct: number; invert?: boolean }) {
+  const up = pct >= 0;
+  const good = invert ? !up : up;
+  return (
+    <span
+      className={
+        "inline-flex items-center gap-0.5 text-[11px] font-medium " +
+        (good ? "text-emerald-600" : "text-destructive")
+      }
+    >
+      {up ? "▲" : "▼"} {Math.abs(pct)}%
+    </span>
+  );
+}
+
 function StatCard({
   icon,
   label,
@@ -118,6 +138,8 @@ function StatCard({
   subtitle,
   tone = "default",
   size = "default",
+  deltaPct,
+  invertDelta = false,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -125,6 +147,8 @@ function StatCard({
   subtitle?: string;
   tone?: "default" | "warning";
   size?: "default" | "compact";
+  deltaPct?: number | null;
+  invertDelta?: boolean;
 }) {
   const compact = size === "compact";
   return (
@@ -149,14 +173,17 @@ function StatCard({
         </span>
         <span className="text-xs font-medium text-muted-foreground leading-tight">{label}</span>
       </div>
-      <div
-        className={
-          (compact ? "text-lg" : "text-2xl") +
-          " font-bold font-heading " +
-          (tone === "warning" ? "text-destructive" : "")
-        }
-      >
-        {value}
+      <div className="flex items-baseline gap-2">
+        <div
+          className={
+            (compact ? "text-lg" : "text-2xl") +
+            " font-bold font-heading " +
+            (tone === "warning" ? "text-destructive" : "")
+          }
+        >
+          {value}
+        </div>
+        {deltaPct !== undefined && deltaPct !== null && <DeltaBadge pct={deltaPct} invert={invertDelta} />}
       </div>
       {subtitle && <p className="text-xs text-muted-foreground leading-snug">{subtitle}</p>}
     </div>
@@ -958,16 +985,42 @@ export default function InteligenciaComercialPage() {
 
   if (!data) return null;
 
-  const { overview, trends, funnel, origins, products, fontes, tags, originProductCross, insightSections, actions } =
-    data;
+  const {
+    overview,
+    previousPeriod,
+    trends,
+    funnel,
+    lossByStage,
+    lossReasons,
+    bySeller,
+    cycleTimeTrend,
+    origins,
+    products,
+    fontes,
+    tags,
+    originProductCross,
+    insightSections,
+    actions,
+  } = data;
 
   const topOrigins = [...origins].sort((a, b) => b.total - a.total).slice(0, 10);
   const maxOriginTotal = Math.max(1, ...topOrigins.map((o) => o.total));
   const maxProductRevenue = Math.max(1, ...products.map((p) => p.revenue));
   const maxTagCount = Math.max(1, ...tags.map((t) => t.count));
   const maxFunnelCount = Math.max(1, ...funnel.map((f) => f.count));
+  const maxLossStageCount = Math.max(1, ...lossByStage.map((s) => s.count));
+  const maxLossReasonTotal = Math.max(1, ...lossReasons.map((r) => r.total));
+  const looksLikeRawId = (s: string) => /^[0-9a-f-]{20,}$/i.test(s);
 
   const totalContactsClassified = overview.contactsWithDeal + overview.contactsWithoutDeal;
+
+  const cycleTimeDeltaPct =
+    cycleTimeTrend.length >= 2
+      ? pctDelta(
+          cycleTimeTrend[cycleTimeTrend.length - 1].avgDays,
+          cycleTimeTrend[cycleTimeTrend.length - 2].avgDays
+        )
+      : null;
 
   const sortedActions = [...actions].sort(
     (a, b) => IMPACT_CONFIG[a.impacto].order - IMPACT_CONFIG[b.impacto].order
@@ -1009,17 +1062,24 @@ export default function InteligenciaComercialPage() {
         </TabsList>
 
         <TabsContent value="resumo" className="space-y-6 mt-4">
+          {previousPeriod && (
+            <p className="text-xs text-muted-foreground -mb-2">
+              Comparando com o período anterior de mesmo tamanho (variação ao lado de cada número).
+            </p>
+          )}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               icon={<Users2 className="h-4 w-4" />}
               label="Contatos"
               value={overview.totalContacts.toLocaleString("pt-BR")}
+              deltaPct={previousPeriod ? pctDelta(overview.totalContacts, previousPeriod.totalContacts) : undefined}
             />
             <StatCard
               icon={<Handshake className="h-4 w-4" />}
               label="Negócios"
               value={overview.totalDeals.toLocaleString("pt-BR")}
               subtitle={`${overview.openDeals} em aberto`}
+              deltaPct={previousPeriod ? pctDelta(overview.totalDeals, previousPeriod.totalDeals) : undefined}
             />
             <StatCard
               icon={<Target className="h-4 w-4" />}
@@ -1032,6 +1092,7 @@ export default function InteligenciaComercialPage() {
               label="Receita fechada"
               value={formatBRL(overview.totalRevenue)}
               subtitle={`Ticket médio: ${formatBRL(overview.avgTicket)}`}
+              deltaPct={previousPeriod ? pctDelta(overview.totalRevenue, previousPeriod.totalRevenue) : undefined}
             />
           </div>
 
@@ -1041,7 +1102,9 @@ export default function InteligenciaComercialPage() {
               icon={<Timer className="h-4 w-4" />}
               label="Ciclo médio de fechamento"
               value={overview.avgDaysToWin !== null ? `${Math.round(overview.avgDaysToWin)} dias` : "—"}
-              subtitle="Da criação do negócio até o ganho"
+              subtitle="Da criação do negócio até o ganho · variação vs. semana anterior"
+              deltaPct={cycleTimeDeltaPct}
+              invertDelta
             />
             <StatCard
               size="compact"
@@ -1193,6 +1256,83 @@ export default function InteligenciaComercialPage() {
                       </TableRow>
                     );
                   })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {lossByStage.length > 0 && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                <SectionHeader
+                  icon={<AlertTriangle className="h-3.5 w-3.5" />}
+                  title="Perdas por etapa (gargalo do funil)"
+                />
+                <div className="space-y-3">
+                  {lossByStage.map((s) => (
+                    <RankBar
+                      key={s.stageId ?? s.stage}
+                      label={s.stage}
+                      value={s.count}
+                      maxValue={maxLossStageCount}
+                      detail={`${s.count} · ${formatBRL(s.value)}`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                <SectionHeader title="Motivos de perda" />
+                {lossReasons.length === 0 ? (
+                  <p className="text-sm text-muted-foreground/60">Nenhum negócio perdido no período.</p>
+                ) : (
+                  <>
+                    {lossReasons.some((r) => looksLikeRawId(r.reason)) && (
+                      <p className="text-[11px] text-muted-foreground/70 italic">
+                        A Clint não expõe o nome legível do motivo pra alguns registros — aparecem como
+                        código bruto abaixo.
+                      </p>
+                    )}
+                    <div className="space-y-3">
+                      {lossReasons.slice(0, 10).map((r) => (
+                        <RankBar
+                          key={r.reason}
+                          label={r.reason}
+                          value={r.total}
+                          maxValue={maxLossReasonTotal}
+                          detail={`${r.total} · ${formatBRL(r.value)}`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {bySeller.length > 0 && (
+            <div className="rounded-xl border border-border overflow-hidden overflow-x-auto">
+              <div className="px-4 pt-4 pb-2">
+                <SectionHeader title="Ticket médio e produção por vendedor (negócios ganhos)" />
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/30 hover:bg-muted/30">
+                    <TableHead>Vendedor</TableHead>
+                    <TableHead className="text-right">Vendas</TableHead>
+                    <TableHead className="text-right">Receita</TableHead>
+                    <TableHead className="text-right">Ticket médio</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bySeller.map((s) => (
+                    <TableRow key={s.seller}>
+                      <TableCell className="font-medium">{s.seller}</TableCell>
+                      <TableCell className="text-right">{s.total}</TableCell>
+                      <TableCell className="text-right font-medium">{formatBRL(s.revenue)}</TableCell>
+                      <TableCell className="text-right">{formatBRL(s.avgTicket)}</TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>

@@ -50,6 +50,33 @@ interface TagRow {
   count: number;
 }
 
+interface LossReasonRow {
+  reason: string;
+  total: number;
+  value: number;
+}
+
+interface SellerRow {
+  seller: string;
+  total: number;
+  revenue: number;
+  avgTicket: number;
+}
+
+interface CycleTimePoint {
+  week: string;
+  avgDays: number;
+}
+
+interface PreviousPeriodOverview {
+  totalDeals: number;
+  wonDeals: number;
+  lostDeals: number;
+  totalRevenue: number;
+  totalContacts: number;
+  winRate: number | null;
+}
+
 interface DashboardFilters {
   from: string | null;
   to: string | null;
@@ -121,11 +148,36 @@ function buildFilterClause(
   return { sql: conditions.length > 0 ? conditions.map((c) => `AND ${c}`).join(" ") : "", params };
 }
 
+/**
+ * Janela imediatamente anterior, do mesmo tamanho, ao período selecionado
+ * (?from&?to) — pra comparação "vs período anterior". Só faz sentido
+ * comparar quando as duas datas estão definidas (senão "atual" seria "todo
+ * o histórico", que não tem um "período anterior" equivalente).
+ */
+function previousPeriodBounds(filters: DashboardFilters): { from: string; to: string } | null {
+  if (!filters.from || !filters.to) return null;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const from = new Date(`${filters.from}T00:00:00Z`);
+  const to = new Date(`${filters.to}T00:00:00Z`);
+  const lengthDays = Math.max(1, Math.round((to.getTime() - from.getTime()) / DAY_MS) + 1);
+  const prevTo = new Date(from.getTime() - DAY_MS);
+  const prevFrom = new Date(prevTo.getTime() - (lengthDays - 1) * DAY_MS);
+  return { from: prevFrom.toISOString().slice(0, 10), to: prevTo.toISOString().slice(0, 10) };
+}
+
 export async function GET(req: NextRequest) {
   try {
     const filters = parseFilters(req);
     const dealFilter = buildFilterClause(filters, 1, "deals");
     const contactFilter = buildFilterClause(filters, 1, "contacts");
+
+    const prevBounds = previousPeriodBounds(filters);
+    const prevDealFilter = prevBounds
+      ? buildFilterClause({ ...filters, from: prevBounds.from, to: prevBounds.to }, 1, "deals")
+      : null;
+    const prevContactFilter = prevBounds
+      ? buildFilterClause({ ...filters, from: prevBounds.from, to: prevBounds.to }, 1, "contacts")
+      : null;
 
     const [
       overviewResult,
@@ -142,6 +194,11 @@ export async function GET(req: NextRequest) {
       originProductResult,
       productOptionsResult,
       originOptionsResult,
+      lossByStageResult,
+      lossReasonsResult,
+      bySellerResult,
+      cycleTimeTrendResult,
+      previousPeriodResult,
     ] = await Promise.all([
       pool.query(
         `
@@ -288,6 +345,87 @@ export async function GET(req: NextRequest) {
         ORDER BY 1
       `),
       pool.query(`SELECT name FROM clint_origins ORDER BY name`),
+      // Perdas por etapa: onde os negócios estavam quando morreram — o
+      // "gargalo" do funil, nomeado por etapa em vez de só o total perdido.
+      pool.query(
+        `
+        SELECT stage, stage_id, COUNT(*) AS count, COALESCE(SUM(value), 0) AS value
+        FROM clint_deals
+        WHERE status = 'LOST' AND stage IS NOT NULL ${dealFilter.sql}
+        GROUP BY stage, stage_id
+        ORDER BY count DESC
+        `,
+        dealFilter.params
+      ),
+      // Motivos de perda: melhor esforço — a Clint não expõe um endpoint
+      // próprio de "razões de perda" que a gente tenha mapeado ainda, então
+      // tenta achar em fields (chaves comuns) e cai pro ID bruto
+      // (lost_status_id) se não achar nome legível. Ver nota no JSON de
+      // resposta — vale confirmar com a Clint o campo certo se isso vier
+      // só como IDs.
+      pool.query(
+        `
+        SELECT
+          COALESCE(
+            fields->>'motivo_perda', fields->>'motivo_da_perda', fields->>'lost_reason',
+            fields->>'motivo', lost_status_id, '(sem motivo registrado)'
+          ) AS reason,
+          COUNT(*) AS total,
+          COALESCE(SUM(value), 0) AS value
+        FROM clint_deals
+        WHERE status = 'LOST' ${dealFilter.sql}
+        GROUP BY 1
+        ORDER BY total DESC
+        LIMIT 15
+        `,
+        dealFilter.params
+      ),
+      // Ticket médio e produção por vendedor (negócios ganhos).
+      pool.query(
+        `
+        SELECT
+          COALESCE(user_name, '(sem vendedor)') AS seller,
+          COUNT(*) AS total,
+          COALESCE(SUM(value), 0) AS revenue,
+          COALESCE(AVG(value) FILTER (WHERE value > 0), 0) AS avg_ticket
+        FROM clint_deals
+        WHERE status = 'WON' ${dealFilter.sql}
+        GROUP BY 1
+        ORDER BY revenue DESC
+        LIMIT 20
+        `,
+        dealFilter.params
+      ),
+      // Tendência do ciclo de venda: tempo médio até ganhar, semana a
+      // semana — pra ver se está subindo ou descendo, não só o número atual.
+      pool.query(
+        `
+        SELECT
+          date_trunc('week', won_at) AS week,
+          AVG(EXTRACT(EPOCH FROM (won_at - clint_created_at)) / 86400) AS avg_days
+        FROM clint_deals
+        WHERE status = 'WON' AND won_at IS NOT NULL AND clint_created_at IS NOT NULL
+          AND won_at > NOW() - INTERVAL '${WEEKS_BACK} weeks' ${dealFilter.sql}
+        GROUP BY 1
+        ORDER BY 1
+        `,
+        dealFilter.params
+      ),
+      // Overview do período anterior (mesmo tamanho, imediatamente antes),
+      // pra comparação — só roda de verdade quando from/to estão definidos.
+      prevDealFilter && prevContactFilter
+        ? pool.query(
+            `
+            SELECT
+              (SELECT COUNT(*) FROM clint_deals WHERE 1=1 ${prevDealFilter.sql}) AS total_deals,
+              (SELECT COUNT(*) FROM clint_deals WHERE status = 'WON' ${prevDealFilter.sql}) AS won_deals,
+              (SELECT COUNT(*) FROM clint_deals WHERE status = 'LOST' ${prevDealFilter.sql}) AS lost_deals,
+              (SELECT COALESCE(SUM(value), 0) FROM clint_deals WHERE status = 'WON' ${prevDealFilter.sql}) AS total_revenue,
+              (SELECT COUNT(*) FROM clint_contacts WHERE 1=1 ${prevContactFilter.sql}) AS total_contacts
+            `,
+            prevDealFilter.params
+          )
+        : Promise.resolve({ rows: [] } as { rows: Record<string, never>[] }),
     ]);
 
     const overview = overviewResult.rows[0];
@@ -340,6 +478,43 @@ export async function GET(req: NextRequest) {
     const dealsCreatedWeekly = toWeeklySeries(dealsCreatedWeeklyResult.rows);
     const dealsWonWeekly = toWeeklySeries(dealsWonWeeklyResult.rows);
 
+    const lossByStage: StageRow[] = lossByStageResult.rows.map((r) => ({
+      stage: r.stage,
+      stageId: r.stage_id,
+      count: Number(r.count),
+      value: Number(r.value),
+    }));
+
+    const lossReasons: LossReasonRow[] = lossReasonsResult.rows.map((r) => ({
+      reason: r.reason,
+      total: Number(r.total),
+      value: Number(r.value),
+    }));
+
+    const bySeller: SellerRow[] = bySellerResult.rows.map((r) => ({
+      seller: r.seller,
+      total: Number(r.total),
+      revenue: Number(r.revenue),
+      avgTicket: Number(r.avg_ticket),
+    }));
+
+    const cycleTimeTrend: CycleTimePoint[] = cycleTimeTrendResult.rows.map((r) => ({
+      week: new Date(r.week).toISOString().slice(0, 10),
+      avgDays: Number(r.avg_days),
+    }));
+
+    const prevRow = previousPeriodResult.rows[0];
+    const previousPeriod: PreviousPeriodOverview | null = prevRow
+      ? {
+          totalDeals: Number(prevRow.total_deals),
+          wonDeals: Number(prevRow.won_deals),
+          lostDeals: Number(prevRow.lost_deals),
+          totalRevenue: Number(prevRow.total_revenue),
+          totalContacts: Number(prevRow.total_contacts),
+          winRate: winRate(Number(prevRow.won_deals), Number(prevRow.lost_deals)),
+        }
+      : null;
+
     const insightSections = buildInsightSections({
       origins,
       products,
@@ -350,6 +525,8 @@ export async function GET(req: NextRequest) {
       dealsCreatedWeekly,
       dealsWonWeekly,
       contactsWithoutDeal: Number(withDealRow.without_deal),
+      lossByStage,
+      lossReasons,
     });
 
     const actions = buildActions({
@@ -358,6 +535,7 @@ export async function GET(req: NextRequest) {
       overview,
       contactsWithoutDeal: Number(withDealRow.without_deal),
       avgDaysToWin,
+      lossByStage,
     });
 
     return NextResponse.json({
@@ -374,8 +552,13 @@ export async function GET(req: NextRequest) {
         contactsWithDeal: Number(withDealRow.with_deal),
         contactsWithoutDeal: Number(withDealRow.without_deal),
       },
+      previousPeriod,
       trends: { contactsWeekly, dealsCreatedWeekly, dealsWonWeekly },
       funnel: stages,
+      lossByStage,
+      lossReasons,
+      bySeller,
+      cycleTimeTrend,
       origins,
       products,
       fontes,
@@ -424,6 +607,8 @@ function buildInsightSections({
   dealsCreatedWeekly,
   dealsWonWeekly,
   contactsWithoutDeal,
+  lossByStage,
+  lossReasons,
 }: {
   origins: OriginRow[];
   products: ProductRow[];
@@ -435,6 +620,8 @@ function buildInsightSections({
   dealsCreatedWeekly: WeeklyPoint[];
   dealsWonWeekly: WeeklyPoint[];
   contactsWithoutDeal: number;
+  lossByStage: StageRow[];
+  lossReasons: LossReasonRow[];
 }): InsightSection[] {
   const sections: InsightSection[] = [];
 
@@ -487,6 +674,22 @@ function buildInsightSections({
       );
     }
     sections.push({ title: "Produtos que mais vendem", items });
+  }
+
+  // --- Gargalo do funil: etapa onde mais se perde negócio ---
+  const totalLost = lossByStage.reduce((sum, s) => sum + s.count, 0);
+  if (lossByStage.length > 0 && totalLost >= MIN_VOLUME_FOR_RATE) {
+    const bottleneck = [...lossByStage].sort((a, b) => b.count - a.count)[0];
+    const pctOfLosses = Math.round((bottleneck.count / totalLost) * 100);
+    const items = [
+      `A etapa "${bottleneck.stage}" concentra ${pctOfLosses}% das perdas (${bottleneck.count} de ${totalLost} negócios perdidos), somando ${formatBRLServer(bottleneck.value)} em valor perdido — esse é o gargalo do funil hoje.`,
+    ];
+    if (lossReasons.length > 0 && lossReasons[0].reason !== "(sem motivo registrado)") {
+      items.push(
+        `Motivo de perda mais comum: "${lossReasons[0].reason}" (${lossReasons[0].total} negócios).`
+      );
+    }
+    sections.push({ title: "Gargalo do funil", items });
   }
 
   // --- Tendência semanal ---
@@ -544,6 +747,7 @@ function buildActions({
   overview,
   contactsWithoutDeal,
   avgDaysToWin,
+  lossByStage,
 }: {
   origins: OriginRow[];
   products: ProductRow[];
@@ -551,6 +755,7 @@ function buildActions({
   overview: any;
   contactsWithoutDeal: number;
   avgDaysToWin: number | null;
+  lossByStage: StageRow[];
 }): ActionItem[] {
   const actions: ActionItem[] = [];
   const qualifiedOrigins = qualifyByRate(origins);
@@ -610,6 +815,21 @@ function buildActions({
       impacto: "Médio",
       prazo: "Próximas 2 semanas",
     });
+  }
+
+  const totalLost = lossByStage.reduce((sum, s) => sum + s.count, 0);
+  if (lossByStage.length > 0 && totalLost >= MIN_VOLUME_FOR_RATE) {
+    const bottleneck = [...lossByStage].sort((a, b) => b.count - a.count)[0];
+    const pctOfLosses = Math.round((bottleneck.count / totalLost) * 100);
+    if (pctOfLosses >= 30) {
+      actions.push({
+        titulo: `Atacar o gargalo na etapa "${bottleneck.stage}"`,
+        porque: `${pctOfLosses}% de todas as perdas acontecem nessa etapa (${bottleneck.count} negócios, ${formatBRLServer(bottleneck.value)} em valor perdido) — é onde o funil mais vaza.`,
+        oque: "Revisar o script/abordagem usado nessa etapa específica e entender, com os últimos negócios perdidos ali, se o padrão é objeção de preço, falta de follow-up ou desqualificação tardia.",
+        impacto: "Alto",
+        prazo: "Próximas 2 semanas",
+      });
+    }
   }
 
   return actions;
