@@ -79,6 +79,48 @@ export interface ClintTag {
   color: string;
 }
 
+// Endpoints v2 (chats/messages) usam um envelope de paginação em
+// snake_case, diferente do camelCase dos endpoints v1 (contacts/deals/
+// origins/tags) — confirmado manualmente contra a conta real.
+export interface ClintListResponseV2<T> {
+  status: number;
+  total_count: number;
+  page: number;
+  total_pages: number;
+  has_next: boolean;
+  has_previous: boolean;
+  data: T[];
+}
+
+export interface ClintChat {
+  id: string;
+  created_at: string;
+  contact_id: string;
+  user_id: string | null;
+  status: string;
+  seen: boolean;
+  unread: boolean;
+  replied: boolean;
+  unseen_count: number;
+  last_message_at: string | null;
+  last_response_at: string | null;
+  closed_at: string | null;
+  first_response_at: string | null;
+  first_customer_message_at: string | null;
+  channel_account_id: string | null;
+}
+
+export interface ClintMessage {
+  id: string;
+  created_at: string;
+  chat_id: string;
+  user_id: string | null;
+  content: string | null;
+  type: string;
+  content_type: string;
+  status: string;
+}
+
 async function clintRequest<T>(path: string, params: Record<string, string | number | undefined>): Promise<T> {
   const token = process.env.CLINT_API_TOKEN;
   if (!token) throw new Error("CLINT_API_TOKEN não configurado no servidor.");
@@ -122,4 +164,12 @@ export function fetchOriginsPage(page: number, perPage = 200) {
 
 export function fetchTagsPage(page: number, perPage = 200) {
   return clintRequest<ClintListResponse<ClintTag>>("/v1/tags", { page, per_page: perPage });
+}
+
+export function fetchChatsForContact(contactId: string, page = 1, limit = 200) {
+  return clintRequest<ClintListResponseV2<ClintChat>>(`/v2/chats/contact/${contactId}`, { page, limit });
+}
+
+export function fetchMessagesForChat(chatId: string, page = 1, limit = 200) {
+  return clintRequest<ClintListResponseV2<ClintMessage>>(`/v2/messages/chat/${chatId}`, { page, limit });
 }

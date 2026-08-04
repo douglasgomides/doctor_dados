@@ -1,14 +1,25 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useClintStore,
   ClintOriginRow,
   ClintProductRow,
   ClintWeeklyPoint,
+  ClintInsightSection,
+  ClintAction,
 } from "@/store/clint-store";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -27,6 +38,10 @@ import {
   Timer,
   Target,
   Lightbulb,
+  MessageCircleWarning,
+  Clock,
+  AlertTriangle,
+  ListChecks,
 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer, XAxis, Tooltip } from "recharts";
 
@@ -39,24 +54,54 @@ function formatWeek(iso: string): string {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
+function formatDateTime(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function formatMinutes(minutes: number | null): string {
+  if (minutes === null) return "—";
+  if (minutes < 60) return `${Math.round(minutes)} min`;
+  if (minutes < 1440) return `${(minutes / 60).toFixed(1)} h`;
+  return `${(minutes / 1440).toFixed(1)} dias`;
+}
+
+function timeSince(iso: string | null): string {
+  if (!iso) return "—";
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const hours = diffMs / (1000 * 60 * 60);
+  if (hours < 1) return "há menos de 1h";
+  if (hours < 24) return `há ${Math.round(hours)}h`;
+  return `há ${Math.round(hours / 24)} dia(s)`;
+}
+
 function StatCard({
   icon,
   label,
   value,
   subtitle,
+  tone,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   subtitle?: string;
+  tone?: "default" | "warning";
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+    <div
+      className={
+        "rounded-xl border p-4 space-y-2 " +
+        (tone === "warning" ? "border-destructive/30 bg-destructive/[0.05]" : "border-border bg-card")
+      }
+    >
       <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium">
-        <span className="text-primary">{icon}</span>
+        <span className={tone === "warning" ? "text-destructive" : "text-primary"}>{icon}</span>
         {label}
       </div>
-      <div className="text-2xl font-bold font-heading">{value}</div>
+      <div className={"text-2xl font-bold font-heading " + (tone === "warning" ? "text-destructive" : "")}>
+        {value}
+      </div>
       {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
     </div>
   );
@@ -88,22 +133,56 @@ function RankBar({
   );
 }
 
-function InsightsPanel({ insights }: { insights: string[] }) {
-  if (insights.length === 0) return null;
+function InsightSectionsPanel({ sections }: { sections: ClintInsightSection[] }) {
+  if (sections.length === 0) return null;
   return (
-    <div className="rounded-xl border border-primary/30 bg-primary/[0.06] p-5 space-y-3">
-      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-primary">
-        <Lightbulb className="h-4 w-4" />
-        Insights automáticos
+    <div className="grid gap-4 sm:grid-cols-2">
+      {sections.map((section) => (
+        <div
+          key={section.title}
+          className="rounded-xl border border-border bg-card p-4 space-y-2.5 border-l-2 border-l-primary"
+        >
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Lightbulb className="h-4 w-4 text-primary shrink-0" />
+            {section.title}
+          </div>
+          <ul className="space-y-2">
+            {section.items.map((item, i) => (
+              <li key={i} className="text-sm text-muted-foreground leading-relaxed">
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const IMPACT_COLOR: Record<ClintAction["impacto"], string> = {
+  Alto: "border-l-destructive",
+  Médio: "border-l-amber-500",
+  Baixo: "border-l-muted-foreground",
+};
+
+function ActionCard({ action }: { action: ClintAction }) {
+  return (
+    <div className={`rounded-xl border border-border bg-card p-4 space-y-2.5 border-l-2 ${IMPACT_COLOR[action.impacto]}`}>
+      <div className="flex items-start justify-between gap-2">
+        <span className="font-semibold text-sm">{action.titulo}</span>
+        <Badge variant={action.impacto === "Alto" ? "destructive" : "outline"} className="shrink-0 text-[10px]">
+          Impacto {action.impacto}
+        </Badge>
       </div>
-      <ul className="space-y-2">
-        {insights.map((insight, i) => (
-          <li key={i} className="text-sm flex items-start gap-2">
-            <span className="text-primary shrink-0">•</span>
-            <span>{insight}</span>
-          </li>
-        ))}
-      </ul>
+      <p className="text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">Por quê: </span>
+        {action.porque}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">O que fazer: </span>
+        {action.oque}
+      </p>
+      <p className="text-[11px] text-muted-foreground/70 uppercase tracking-wide">Prazo: {action.prazo}</p>
     </div>
   );
 }
@@ -215,6 +294,243 @@ function originWinRate(o: ClintOriginRow): number | null {
   return decided > 0 ? o.won / decided : null;
 }
 
+const STATUS_LABEL: Record<string, string> = { OPEN: "Em aberto", WON: "Ganho", LOST: "Perdido" };
+const STATUS_VARIANT: Record<string, "default" | "outline" | "destructive"> = {
+  OPEN: "outline",
+  WON: "default",
+  LOST: "destructive",
+};
+
+function NegociosTab() {
+  const { deals, dealsLoading, dealsError, fetchDeals } = useClintStore();
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("todos");
+
+  useEffect(() => {
+    fetchDeals();
+  }, [fetchDeals]);
+
+  function applyFilters() {
+    fetchDeals({ search: search || undefined, status: status !== "todos" ? status : undefined, offset: 0 });
+  }
+
+  return (
+    <div className="space-y-4 mt-4">
+      <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            placeholder="Buscar por nome do contato ou produto..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && applyFilters()}
+            className="max-w-xs"
+          />
+          <Select value={status} onValueChange={(v) => { setStatus(v); }}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os status</SelectItem>
+              <SelectItem value="OPEN">Em aberto</SelectItem>
+              <SelectItem value="WON">Ganhos</SelectItem>
+              <SelectItem value="LOST">Perdidos</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button size="sm" onClick={applyFilters} disabled={dealsLoading}>
+            {dealsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buscar"}
+          </Button>
+          {deals && (
+            <span className="text-xs text-muted-foreground ml-auto">
+              mostrando {deals.deals.length} de {deals.total.toLocaleString("pt-BR")}
+            </span>
+          )}
+        </div>
+
+        {dealsError && <p className="text-sm text-destructive">{dealsError}</p>}
+
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Data</TableHead>
+                <TableHead>Contato</TableHead>
+                <TableHead>Produto</TableHead>
+                <TableHead>Origem</TableHead>
+                <TableHead>Etapa</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Valor</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {deals?.deals.map((d) => (
+                <TableRow key={d.id}>
+                  <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
+                    {formatDateTime(d.createdAt)}
+                  </TableCell>
+                  <TableCell className="font-medium max-w-[180px] truncate">{d.contactName}</TableCell>
+                  <TableCell className="text-muted-foreground max-w-[200px] truncate">
+                    {d.product || "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground whitespace-nowrap">{d.originName}</TableCell>
+                  <TableCell className="text-muted-foreground whitespace-nowrap">{d.stage || "—"}</TableCell>
+                  <TableCell>
+                    <Badge variant={STATUS_VARIANT[d.status] ?? "outline"}>
+                      {STATUS_LABEL[d.status] ?? d.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right font-medium whitespace-nowrap">
+                    {formatBRL(d.value)}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {deals && deals.deals.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    Nenhum negócio encontrado com esses filtros.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AtendimentoTab() {
+  const { atendimento, atendimentoLoading, atendimentoError, fetchAtendimento } = useClintStore();
+
+  useEffect(() => {
+    fetchAtendimento();
+  }, [fetchAtendimento]);
+
+  if (atendimentoLoading && !atendimento) {
+    return (
+      <div className="flex items-center justify-center h-48 mt-4">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (atendimentoError) {
+    return <p className="text-destructive mt-4">{atendimentoError}</p>;
+  }
+
+  if (!atendimento) return null;
+
+  const { overview, byOrigin, unanswered } = atendimento;
+
+  if (overview.totalChats === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6 mt-4 text-sm text-muted-foreground">
+        Nenhum chat sincronizado ainda. Rode a sincronização com{" "}
+        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">resource=messages</code> pra ver dados de
+        atendimento aqui (cobre os contatos com negócio associado, priorizando os mais recentes).
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 mt-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          icon={<MessageCircleWarning className="h-4 w-4" />}
+          label="Nunca respondidos"
+          value={overview.nuncaRespondido.toLocaleString("pt-BR")}
+          subtitle={
+            overview.pctNuncaRespondido !== null
+              ? `${Math.round(overview.pctNuncaRespondido * 100)}% dos chats com mensagem`
+              : undefined
+          }
+          tone={overview.nuncaRespondido > 0 ? "warning" : "default"}
+        />
+        <StatCard
+          icon={<Clock className="h-4 w-4" />}
+          label="Tempo médio de 1ª resposta"
+          value={formatMinutes(overview.avgResponseMinutes)}
+        />
+        <StatCard
+          icon={<Users2 className="h-4 w-4" />}
+          label="Chats sincronizados"
+          value={overview.totalChats.toLocaleString("pt-BR")}
+        />
+        <StatCard
+          icon={<Users2 className="h-4 w-4" />}
+          label="Mensagens sincronizadas"
+          value={overview.totalMessages.toLocaleString("pt-BR")}
+        />
+      </div>
+
+      {unanswered.length > 0 && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/[0.04] p-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
+            <AlertTriangle className="h-4 w-4" />
+            Leads que mandaram mensagem e nunca foram respondidos ({unanswered.length})
+          </div>
+          <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+            {unanswered.map((u) => (
+              <div key={u.chatId} className="rounded-lg border border-border bg-card p-3 space-y-1">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="font-medium text-sm">{u.contactName}</span>
+                  <span className="text-xs text-muted-foreground">
+                    mensagem {timeSince(u.firstCustomerMessageAt)} · {u.originName || "sem origem"}
+                  </span>
+                </div>
+                {u.lastMessageContent && (
+                  <p className="text-sm text-muted-foreground italic truncate">&quot;{u.lastMessageContent}&quot;</p>
+                )}
+                {u.stage && (
+                  <p className="text-xs text-muted-foreground">
+                    Etapa: {u.stage}
+                    {u.value ? ` · ${formatBRL(u.value)}` : ""}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {byOrigin.length > 0 && (
+        <div className="rounded-xl border border-border overflow-hidden overflow-x-auto">
+          <div className="px-4 pt-4 pb-1">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Atendimento por origem
+            </p>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Origem</TableHead>
+                <TableHead className="text-right">Chats</TableHead>
+                <TableHead className="text-right">Nunca respondidos</TableHead>
+                <TableHead className="text-right">Tempo médio de resposta</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {byOrigin.map((o) => (
+                <TableRow key={o.originName}>
+                  <TableCell className="font-medium">{o.originName}</TableCell>
+                  <TableCell className="text-right">{o.total}</TableCell>
+                  <TableCell className="text-right">
+                    {o.nuncaRespondido > 0 ? (
+                      <Badge variant="destructive">{o.nuncaRespondido}</Badge>
+                    ) : (
+                      "0"
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">{formatMinutes(o.avgResponseMinutes)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InteligenciaComercialPage() {
   const { data, loading, error, fetchData } = useClintStore();
 
@@ -241,7 +557,8 @@ export default function InteligenciaComercialPage() {
 
   if (!data) return null;
 
-  const { overview, trends, funnel, origins, products, fontes, tags, originProductCross, insights } = data;
+  const { overview, trends, funnel, origins, products, fontes, tags, originProductCross, insightSections, actions } =
+    data;
 
   const topOrigins = [...origins].sort((a, b) => b.total - a.total).slice(0, 10);
   const maxOriginTotal = Math.max(1, ...topOrigins.map((o) => o.total));
@@ -259,16 +576,19 @@ export default function InteligenciaComercialPage() {
           Inteligência Comercial
         </h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Contatos e negócios sincronizados da Clint — cruzamentos de origem, produto e tempo para
-          decisões mais assertivas.
+          Contatos, negócios e atendimento sincronizados da Clint — cruzamentos de origem, produto e tempo
+          de resposta para decisões mais assertivas.
         </p>
       </div>
 
       <Tabs defaultValue="resumo">
         <TabsList>
           <TabsTrigger value="resumo">Resumo</TabsTrigger>
+          <TabsTrigger value="negocios">Negócios</TabsTrigger>
+          <TabsTrigger value="atendimento">Atendimento</TabsTrigger>
           <TabsTrigger value="origem-produto">Origem &amp; Produto</TabsTrigger>
           <TabsTrigger value="contatos">Contatos</TabsTrigger>
+          <TabsTrigger value="acoes">Ações a Tomar</TabsTrigger>
         </TabsList>
 
         <TabsContent value="resumo" className="space-y-6 mt-4">
@@ -317,7 +637,7 @@ export default function InteligenciaComercialPage() {
             />
           </div>
 
-          <InsightsPanel insights={insights} />
+          <InsightSectionsPanel sections={insightSections} />
 
           <WeeklyTrendChart
             contacts={trends.contactsWeekly}
@@ -343,6 +663,14 @@ export default function InteligenciaComercialPage() {
               </div>
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="negocios">
+          <NegociosTab />
+        </TabsContent>
+
+        <TabsContent value="atendimento">
+          <AtendimentoTab />
         </TabsContent>
 
         <TabsContent value="origem-produto" className="space-y-6 mt-4">
@@ -488,6 +816,24 @@ export default function InteligenciaComercialPage() {
                 ))}
               </div>
             </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="acoes" className="space-y-4 mt-4">
+          {actions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma ação sugerida com os dados atuais.</p>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <ListChecks className="h-4 w-4" />
+                Recomendações calculadas a partir dos dados sincronizados — revise antes de agir.
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {actions.map((action, i) => (
+                  <ActionCard key={i} action={action} />
+                ))}
+              </div>
+            </>
           )}
         </TabsContent>
       </Tabs>

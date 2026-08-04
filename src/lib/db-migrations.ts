@@ -307,4 +307,54 @@ export async function runMigrations(): Promise<void> {
       last_completed_at TIMESTAMP
     );
   `);
+
+  // --- Clint: chats e mensagens (WhatsApp/Instagram) ---
+  // Formato confirmado manualmente contra a conta real via
+  // GET /v2/chats/contact/{contactId} e GET /v2/messages/chat/{chatId}.
+  // Não existe endpoint que liste chats/mensagens em massa — só por
+  // contato/chat — então a sincronização (ver src/lib/clint-sync.ts,
+  // resource "messages") é escopada aos contatos com pelo menos um negócio
+  // associado (relevantes comercialmente), priorizando os mais recentes.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clint_chats (
+      id UUID PRIMARY KEY,
+      contact_id UUID,
+      user_id UUID,
+      status VARCHAR(20),
+      replied BOOLEAN NOT NULL DEFAULT false,
+      seen BOOLEAN NOT NULL DEFAULT false,
+      unread BOOLEAN NOT NULL DEFAULT false,
+      unseen_count INTEGER NOT NULL DEFAULT 0,
+      channel_account_id UUID,
+      first_customer_message_at TIMESTAMPTZ,
+      first_response_at TIMESTAMPTZ,
+      last_message_at TIMESTAMPTZ,
+      last_response_at TIMESTAMPTZ,
+      closed_at TIMESTAMPTZ,
+      clint_created_at TIMESTAMPTZ,
+      synced_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_clint_chats_contact_id ON clint_chats(contact_id);`);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_clint_chats_first_response_at ON clint_chats(first_response_at);`
+  );
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clint_messages (
+      id UUID PRIMARY KEY,
+      chat_id UUID NOT NULL,
+      user_id UUID,
+      content TEXT,
+      type VARCHAR(20),
+      content_type VARCHAR(30),
+      status VARCHAR(20),
+      clint_created_at TIMESTAMPTZ,
+      synced_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_clint_messages_chat_id ON clint_messages(chat_id);`);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_clint_messages_created_at ON clint_messages(clint_created_at);`
+  );
 }

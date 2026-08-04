@@ -4,11 +4,23 @@ import {
   fetchDealsPage,
   fetchOriginsPage,
   fetchTagsPage,
+  fetchChatsForContact,
+  fetchMessagesForChat,
   ClintContact,
   ClintDeal,
+  ClintChat,
+  ClintMessage,
 } from "@/lib/clint";
 
-export type ClintResource = "contacts" | "deals" | "origins" | "tags";
+export type ClintResource = "contacts" | "deals" | "origins" | "tags" | "messages";
+
+// Não existe endpoint da Clint pra listar chats/mensagens em massa — só por
+// contato/chat individualmente. Sincronizar os 61k+ contatos seria
+// inviável (cada um custa 1+ chamadas), então limitamos aos contatos com
+// pelo menos um negócio associado (relevantes comercialmente), priorizando
+// os com atividade mais recente. Se precisar de mais cobertura depois, dá
+// pra aumentar esse valor e rodar a sincronização de novo.
+const MESSAGES_SYNC_CONTACT_LIMIT = 1500;
 
 export interface ClintSyncResult {
   resource: ClintResource;
@@ -215,6 +227,152 @@ async function upsertDeals(deals: ClintDeal[]): Promise<void> {
   }
 }
 
+async function upsertChats(chats: ClintChat[]): Promise<void> {
+  const columns = [
+    "id",
+    "contact_id",
+    "user_id",
+    "status",
+    "replied",
+    "seen",
+    "unread",
+    "unseen_count",
+    "channel_account_id",
+    "first_customer_message_at",
+    "first_response_at",
+    "last_message_at",
+    "last_response_at",
+    "closed_at",
+    "clint_created_at",
+    "synced_at",
+  ];
+  const now = new Date().toISOString();
+  const rows = chats.map((c) => [
+    c.id,
+    c.contact_id,
+    c.user_id,
+    c.status,
+    c.replied,
+    c.seen,
+    c.unread,
+    c.unseen_count,
+    c.channel_account_id,
+    c.first_customer_message_at,
+    c.first_response_at,
+    c.last_message_at,
+    c.last_response_at,
+    c.closed_at,
+    c.created_at,
+    now,
+  ]);
+  await bulkUpsert("clint_chats", columns, rows, "id");
+}
+
+async function upsertMessages(messages: ClintMessage[]): Promise<void> {
+  const columns = [
+    "id",
+    "chat_id",
+    "user_id",
+    "content",
+    "type",
+    "content_type",
+    "status",
+    "clint_created_at",
+    "synced_at",
+  ];
+  const now = new Date().toISOString();
+  const rows = messages.map((m) => [
+    m.id,
+    m.chat_id,
+    m.user_id,
+    m.content,
+    m.type,
+    m.content_type,
+    m.status,
+    m.created_at,
+    now,
+  ]);
+  await bulkUpsert("clint_messages", columns, rows, "id");
+}
+
+/**
+ * Sincroniza chats + mensagens dos contatos com negócio associado (ver
+ * MESSAGES_SYNC_CONTACT_LIMIT), de forma retomável: busca um lote de IDs de
+ * contato a partir do offset salvo, processa um por um (1 chamada de chats
+ * + 1 chamada de mensagens por chat) até esgotar o orçamento de tempo, e
+ * grava quantos processou. A próxima chamada continua do offset seguinte.
+ */
+async function syncMessages(timeBudgetMs: number): Promise<ClintSyncResult> {
+  const state = await getSyncState("messages");
+  const deadline = Date.now() + timeBudgetMs;
+  const startOffset = state.next_page || 1;
+
+  try {
+    const totalResult = await pool.query(
+      `SELECT COUNT(DISTINCT contact_id) AS total FROM clint_deals WHERE contact_id IS NOT NULL`
+    );
+    const totalContacts = Math.min(MESSAGES_SYNC_CONTACT_LIMIT, Number(totalResult.rows[0].total));
+
+    const batchResult = await pool.query(
+      `
+      SELECT contact_id
+      FROM clint_deals
+      WHERE contact_id IS NOT NULL
+      GROUP BY contact_id
+      ORDER BY MAX(clint_updated_at) DESC NULLS LAST
+      LIMIT 300 OFFSET $1
+      `,
+      [startOffset - 1]
+    );
+    const contactIds: string[] = batchResult.rows.map((r) => r.contact_id);
+
+    let processed = 0;
+    let recordsSynced = 0;
+
+    for (const contactId of contactIds) {
+      if (Date.now() >= deadline) break;
+
+      const chatsResponse = await fetchChatsForContact(contactId);
+      if (chatsResponse.data.length > 0) {
+        await upsertChats(chatsResponse.data);
+        for (const chat of chatsResponse.data) {
+          const messagesResponse = await fetchMessagesForChat(chat.id);
+          if (messagesResponse.data.length > 0) {
+            await upsertMessages(messagesResponse.data);
+            recordsSynced += messagesResponse.data.length;
+          }
+        }
+      }
+      processed += 1;
+    }
+
+    const newOffset = startOffset + processed;
+    const done = newOffset > totalContacts;
+
+    await updateSyncState("messages", {
+      nextPage: done ? 1 : newOffset,
+      totalPages: totalContacts,
+      recordsSyncedLastRun: recordsSynced,
+      status: done ? "idle" : "in_progress",
+      lastError: null,
+      completed: done,
+    });
+
+    return {
+      resource: "messages",
+      pagesSynced: processed,
+      recordsSynced,
+      done,
+      currentPage: newOffset,
+      totalPages: totalContacts,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await updateSyncState("messages", { status: "error", lastError: message });
+    throw error;
+  }
+}
+
 /**
  * Sincroniza contatos ou negócios de forma retomável: processa páginas até
  * esgotar `timeBudgetMs` (pensado pro limite de execução de uma função
@@ -341,6 +499,9 @@ export async function syncResource(
 ): Promise<ClintSyncResult> {
   if (resource === "contacts" || resource === "deals") {
     return syncPaginatedResource(resource, timeBudgetMs);
+  }
+  if (resource === "messages") {
+    return syncMessages(timeBudgetMs);
   }
   return syncFullResource(resource);
 }
