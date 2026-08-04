@@ -175,9 +175,13 @@ sua conta antes do uso em produção:
 - **Nomes dos parâmetros de filtro** em `clint_list_contacts` e
   `clint_list_deals` (`name`, `email`, `phone`, `origin`, `tags`, `status`,
   `stage`, `user`, `contact`) seguem a nomenclatura mais comum para esse
-  tipo de API e ainda **não foram validados contra uma conta real**. Se a
-  Clint usar nomes diferentes (ex.: `origin_id` em vez de `origin`), ajuste
-  os `query` passados em `src/tools/contacts.ts` e `src/tools/deals.ts`.
+  tipo de API. O parâmetro `name` de `clint_list_contacts` **já foi validado
+  em produção** (`GET /v1/contacts?name=...` filtra corretamente, testado
+  numa conta real com 62 mil contatos). Os demais (`email`, `phone`,
+  `origin`, `tags` em contacts; todos os filtros de `clint_list_deals`)
+  ainda não foram validados — se algum vier com nome diferente (ex.:
+  `origin_id` em vez de `origin`), ajuste os `query` passados em
+  `src/tools/contacts.ts` e `src/tools/deals.ts`.
 - **Formato de paginação**: confirmado em produção (`GET /v1/tags` numa
   conta real) como `{ status, totalCount, page, totalPages, hasNext,
   hasPrevious, data: [...] }`. `src/pagination.ts` usa `hasNext` como sinal
