@@ -25,7 +25,8 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(50, Math.max(1, Number(req.nextUrl.searchParams.get("limit")) || 25));
 
   try {
-    const [channelsResult, typesResult, sampleResult] = await Promise.all([
+    const [channelsResult, typesResult, sampleResult, chatsByChannelResult, originBreakdownResult] =
+      await Promise.all([
       pool.query(
         `SELECT id, name, type, status, identifier FROM clint_channel_accounts WHERE type ILIKE $1 ORDER BY name`,
         [`%${channelType}%`]
@@ -66,6 +67,46 @@ export async function GET(req: NextRequest) {
         `,
         [`%${channelType}%`, limit]
       ),
+      // Distribuição de TODOS os chats já sincronizados por canal (inclui
+      // channel_account_id nulo) — pra ver se o Instagram está mesmo
+      // ausente dos chats sincronizados, ou só não apareceu na amostra.
+      pool.query(`
+        SELECT ch.name AS channel_name, ch.type AS channel_type, COUNT(*) AS total_chats
+        FROM clint_chats c
+        LEFT JOIN clint_channel_accounts ch ON ch.id = c.channel_account_id
+        GROUP BY 1, 2
+        ORDER BY total_chats DESC
+      `),
+      // Origem/fonte dos contatos com negócio, e quantos desses caem dentro
+      // da janela dos ~1500 contatos mais recentes que a sincronização de
+      // mensagens processa (MESSAGES_SYNC_CONTACT_LIMIT em clint-sync.ts) —
+      // pra ver se contatos de Instagram estão sendo deixados de fora por
+      // serem menos "recentes" que o volume de WhatsApp.
+      pool.query(`
+        WITH ranked AS (
+          SELECT contact_id, ROW_NUMBER() OVER (ORDER BY MAX(clint_updated_at) DESC NULLS LAST) AS rn
+          FROM clint_deals
+          WHERE contact_id IS NOT NULL
+          GROUP BY contact_id
+        ),
+        deal_origin AS (
+          SELECT DISTINCT ON (contact_id) contact_id, origin_id, fields->>'fonte' AS fonte
+          FROM clint_deals
+          WHERE contact_id IS NOT NULL
+          ORDER BY contact_id, clint_updated_at DESC NULLS LAST
+        )
+        SELECT
+          COALESCE(o.name, 'Sem origem') AS origin_name,
+          do.fonte,
+          COUNT(*) AS total_contacts,
+          COUNT(*) FILTER (WHERE r.rn <= 1500) AS dentro_da_janela_sincronizada
+        FROM deal_origin do
+        LEFT JOIN clint_origins o ON o.id = do.origin_id
+        LEFT JOIN ranked r ON r.contact_id = do.contact_id
+        GROUP BY 1, 2
+        ORDER BY total_contacts DESC
+        LIMIT 30
+      `),
     ]);
 
     return NextResponse.json({
@@ -77,6 +118,17 @@ export async function GET(req: NextRequest) {
         semUserId: Number(r.sem_user_id),
       })),
       sample: sampleResult.rows,
+      chatsByChannel: chatsByChannelResult.rows.map((r) => ({
+        channelName: r.channel_name,
+        channelType: r.channel_type,
+        totalChats: Number(r.total_chats),
+      })),
+      originBreakdown: originBreakdownResult.rows.map((r) => ({
+        originName: r.origin_name,
+        fonte: r.fonte,
+        totalContacts: Number(r.total_contacts),
+        dentroDaJanelaSincronizada: Number(r.dentro_da_janela_sincronizada),
+      })),
     });
   } catch (error) {
     console.error("Erro no diagnóstico de mensagens Clint:", error);
