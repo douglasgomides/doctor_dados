@@ -45,6 +45,9 @@ import {
   ListChecks,
   Filter,
   X,
+  Flame,
+  Info,
+  Bot,
 } from "lucide-react";
 
 /** Intervalo de atualização automática dos dados (resumo, negócios, atendimento). */
@@ -81,34 +84,81 @@ function timeSince(iso: string | null): string {
   return `há ${Math.round(hours / 24)} dia(s)`;
 }
 
+/**
+ * Cabeçalho pequeno e consistente pra seções dentro de um card (rankings,
+ * tabelas) — centraliza o estilo que antes se repetia como <p> solto em
+ * cada seção, com ícone e badge de contagem opcionais.
+ */
+function SectionHeader({
+  icon,
+  title,
+  badge,
+}: {
+  icon?: React.ReactNode;
+  title: string;
+  badge?: string | number;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      {icon && <span className="text-muted-foreground shrink-0">{icon}</span>}
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{title}</p>
+      {badge !== undefined && (
+        <Badge variant="outline" className="text-[10px] font-normal">
+          {badge}
+        </Badge>
+      )}
+    </div>
+  );
+}
+
 function StatCard({
   icon,
   label,
   value,
   subtitle,
-  tone,
+  tone = "default",
+  size = "default",
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   subtitle?: string;
   tone?: "default" | "warning";
+  size?: "default" | "compact";
 }) {
+  const compact = size === "compact";
   return (
     <div
       className={
-        "rounded-xl border p-4 space-y-2 " +
+        "rounded-xl border space-y-2 " +
+        (compact ? "p-3" : "p-4") +
+        " " +
         (tone === "warning" ? "border-destructive/30 bg-destructive/[0.05]" : "border-border bg-card")
       }
     >
-      <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium">
-        <span className={tone === "warning" ? "text-destructive" : "text-primary"}>{icon}</span>
-        {label}
+      <div className="flex items-center gap-2">
+        <span
+          className={
+            "flex items-center justify-center rounded-lg shrink-0 " +
+            (compact ? "h-6 w-6" : "h-7 w-7") +
+            " " +
+            (tone === "warning" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary")
+          }
+        >
+          {icon}
+        </span>
+        <span className="text-xs font-medium text-muted-foreground leading-tight">{label}</span>
       </div>
-      <div className={"text-2xl font-bold font-heading " + (tone === "warning" ? "text-destructive" : "")}>
+      <div
+        className={
+          (compact ? "text-lg" : "text-2xl") +
+          " font-bold font-heading " +
+          (tone === "warning" ? "text-destructive" : "")
+        }
+      >
         {value}
       </div>
-      {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+      {subtitle && <p className="text-xs text-muted-foreground leading-snug">{subtitle}</p>}
     </div>
   );
 }
@@ -139,56 +189,128 @@ function RankBar({
   );
 }
 
-function InsightSectionsPanel({ sections }: { sections: ClintInsightSection[] }) {
-  if (sections.length === 0) return null;
+/** Barra de duas partes pra mostrar uma proporção (ex.: contatos com/sem negócio) sem precisar de um donut. */
+function SplitBar({
+  a,
+  b,
+  aLabel,
+  bLabel,
+}: {
+  a: number;
+  b: number;
+  aLabel: string;
+  bLabel: string;
+}) {
+  const total = a + b;
+  const aPct = total > 0 ? Math.round((a / total) * 100) : 0;
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      {sections.map((section) => (
-        <div
-          key={section.title}
-          className="rounded-xl border border-border bg-card p-4 space-y-2.5 border-l-2 border-l-primary"
-        >
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Lightbulb className="h-4 w-4 text-primary shrink-0" />
-            {section.title}
-          </div>
-          <ul className="space-y-2">
-            {section.items.map((item, i) => (
-              <li key={i} className="text-sm text-muted-foreground leading-relaxed">
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
+    <div className="space-y-2">
+      <div className="h-3 rounded-full overflow-hidden flex bg-muted">
+        <div className="h-full bg-primary" style={{ width: `${aPct}%` }} />
+        <div className="h-full bg-muted-foreground/25" style={{ width: `${Math.max(0, 100 - aPct)}%` }} />
+      </div>
+      <div className="flex items-center justify-between text-xs text-muted-foreground flex-wrap gap-2">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
+          {aLabel}: <span className="font-medium text-foreground">{a.toLocaleString("pt-BR")}</span> ({aPct}%)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-muted-foreground/40 shrink-0" />
+          {bLabel}: <span className="font-medium text-foreground">{b.toLocaleString("pt-BR")}</span> ({100 - aPct}%)
+        </span>
+      </div>
     </div>
   );
 }
 
-const IMPACT_COLOR: Record<ClintAction["impacto"], string> = {
-  Alto: "border-l-destructive",
-  Médio: "border-l-amber-500",
-  Baixo: "border-l-muted-foreground",
+/**
+ * Painel de leitura narrativa ("briefing do analista") a partir das seções
+ * de insight geradas no backend — visual mais editorial que uma lista crua:
+ * cartão com leve destaque de marca por fora, subcartões por tema por
+ * dentro, com marcadores discretos em vez de bullets padrão.
+ */
+function InsightSectionsPanel({ sections }: { sections: ClintInsightSection[] }) {
+  if (sections.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/[0.05] to-transparent p-5 space-y-4">
+      <div className="flex items-center gap-2.5">
+        <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-primary/10 text-primary shrink-0">
+          <Sparkles className="h-4 w-4" />
+        </span>
+        <div>
+          <p className="text-sm font-semibold font-heading leading-tight">Leitura do período</p>
+          <p className="text-xs text-muted-foreground">O que os números mostram, direto ao ponto</p>
+        </div>
+      </div>
+      <div className="grid gap-3.5 sm:grid-cols-2">
+        {sections.map((section) => (
+          <div key={section.title} className="rounded-lg border border-border bg-card/70 p-3.5 space-y-2">
+            <div className="flex items-center gap-1.5 text-sm font-semibold">
+              <Lightbulb className="h-3.5 w-3.5 text-primary shrink-0" />
+              {section.title}
+            </div>
+            <ul className="space-y-1.5">
+              {section.items.map((item, i) => (
+                <li
+                  key={i}
+                  className="text-sm text-muted-foreground leading-relaxed pl-3 relative before:content-[''] before:absolute before:left-0 before:top-[0.6em] before:h-1 before:w-1 before:rounded-full before:bg-primary/50"
+                >
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const IMPACT_CONFIG: Record<
+  ClintAction["impacto"],
+  { order: number; border: string; badgeVariant: "destructive" | "outline"; icon: React.ReactNode }
+> = {
+  Alto: { order: 0, border: "border-l-destructive", badgeVariant: "destructive", icon: <Flame className="h-3 w-3" /> },
+  Médio: { order: 1, border: "border-l-amber-500", badgeVariant: "outline", icon: <Clock className="h-3 w-3" /> },
+  Baixo: {
+    order: 2,
+    border: "border-l-muted-foreground/40",
+    badgeVariant: "outline",
+    icon: <Info className="h-3 w-3" />,
+  },
 };
 
-function ActionCard({ action }: { action: ClintAction }) {
+function ActionCard({ action, index }: { action: ClintAction; index: number }) {
+  const cfg = IMPACT_CONFIG[action.impacto];
   return (
-    <div className={`rounded-xl border border-border bg-card p-4 space-y-2.5 border-l-2 ${IMPACT_COLOR[action.impacto]}`}>
+    <div
+      className={`rounded-xl border border-border bg-card p-4 space-y-3 border-l-[3px] ${cfg.border} hover:shadow-sm transition-shadow`}
+    >
       <div className="flex items-start justify-between gap-2">
-        <span className="font-semibold text-sm">{action.titulo}</span>
-        <Badge variant={action.impacto === "Alto" ? "destructive" : "outline"} className="shrink-0 text-[10px]">
-          Impacto {action.impacto}
+        <div className="flex items-start gap-2.5 min-w-0">
+          <span className="flex items-center justify-center h-6 w-6 rounded-full bg-muted text-[11px] font-semibold text-muted-foreground shrink-0 mt-0.5">
+            {index + 1}
+          </span>
+          <span className="font-semibold text-sm leading-snug">{action.titulo}</span>
+        </div>
+        <Badge variant={cfg.badgeVariant} className="shrink-0 text-[10px] gap-1">
+          {cfg.icon}
+          {action.impacto}
         </Badge>
       </div>
-      <p className="text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">Por quê: </span>
-        {action.porque}
-      </p>
-      <p className="text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">O que fazer: </span>
-        {action.oque}
-      </p>
-      <p className="text-[11px] text-muted-foreground/70 uppercase tracking-wide">Prazo: {action.prazo}</p>
+      <div className="pl-8 space-y-2">
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          <span className="font-medium text-foreground">Por quê: </span>
+          {action.porque}
+        </p>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          <span className="font-medium text-foreground">O que fazer: </span>
+          {action.oque}
+        </p>
+        <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground/80">
+          Prazo: {action.prazo}
+        </Badge>
+      </div>
     </div>
   );
 }
@@ -221,24 +343,22 @@ function WeeklyTrendChart({
 
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
-        Tendência semanal
-      </p>
-      <div className="h-56">
+      <SectionHeader title="Tendência semanal" />
+      <div className="h-56 mt-3">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={merged} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
             <defs>
               <linearGradient id="clint-contatos" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.3} />
-                <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="clint-negocios" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#6366f1" stopOpacity={0.3} />
-                <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
+                <stop offset="0%" stopColor="var(--chart-4)" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="var(--chart-4)" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="clint-ganhos" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#1a9c6d" stopOpacity={0.35} />
-                <stop offset="100%" stopColor="#1a9c6d" stopOpacity={0} />
+                <stop offset="0%" stopColor="var(--chart-2)" stopOpacity={0.35} />
+                <stop offset="100%" stopColor="var(--chart-2)" stopOpacity={0} />
               </linearGradient>
             </defs>
             <XAxis dataKey="week" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
@@ -254,7 +374,7 @@ function WeeklyTrendChart({
               type="monotone"
               dataKey="contatos"
               name="Contatos novos"
-              stroke="var(--primary)"
+              stroke="var(--chart-1)"
               strokeWidth={2}
               fill="url(#clint-contatos)"
               isAnimationActive={false}
@@ -263,7 +383,7 @@ function WeeklyTrendChart({
               type="monotone"
               dataKey="negocios"
               name="Negócios criados"
-              stroke="#6366f1"
+              stroke="var(--chart-4)"
               strokeWidth={2}
               fill="url(#clint-negocios)"
               isAnimationActive={false}
@@ -272,7 +392,7 @@ function WeeklyTrendChart({
               type="monotone"
               dataKey="ganhos"
               name="Negócios ganhos"
-              stroke="#1a9c6d"
+              stroke="var(--chart-2)"
               strokeWidth={2}
               fill="url(#clint-ganhos)"
               isAnimationActive={false}
@@ -282,13 +402,13 @@ function WeeklyTrendChart({
       </div>
       <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-primary" /> Contatos novos
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--chart-1)" }} /> Contatos novos
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-[#6366f1]" /> Negócios criados
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--chart-4)" }} /> Negócios criados
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-[#1a9c6d]" /> Negócios ganhos
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--chart-2)" }} /> Negócios ganhos
         </span>
       </div>
     </div>
@@ -330,7 +450,8 @@ function FilterBar({
   const [product, setProduct] = useState(filters.product ?? "todos");
   const [origin, setOrigin] = useState(filters.origin ?? "todos");
 
-  const hasActiveFilters = Boolean(filters.from || filters.to || filters.product || filters.origin);
+  const activeCount = [filters.from, filters.to, filters.product, filters.origin].filter(Boolean).length;
+  const hasActiveFilters = activeCount > 0;
 
   function apply() {
     onApply({
@@ -354,6 +475,11 @@ function FilterBar({
       <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground pb-2 pr-1">
         <Filter className="h-3.5 w-3.5" />
         Filtros
+        {hasActiveFilters && (
+          <Badge variant="outline" className="text-[10px] font-normal">
+            {activeCount} ativo{activeCount > 1 ? "s" : ""}
+          </Badge>
+        )}
       </div>
       <div className="flex flex-col gap-1">
         <label className="text-[11px] text-muted-foreground uppercase tracking-wide">De</label>
@@ -469,17 +595,18 @@ function NegociosTab({ filters }: { filters: ClintFilters }) {
           </Button>
           {deals && (
             <span className="text-xs text-muted-foreground ml-auto">
-              mostrando {deals.deals.length} de {deals.total.toLocaleString("pt-BR")}
+              mostrando <span className="font-medium text-foreground">{deals.deals.length}</span> de{" "}
+              {deals.total.toLocaleString("pt-BR")}
             </span>
           )}
         </div>
 
         {dealsError && <p className="text-sm text-destructive">{dealsError}</p>}
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto rounded-lg border border-border">
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="bg-muted/30 hover:bg-muted/30">
                 <TableHead>Data</TableHead>
                 <TableHead>Contato</TableHead>
                 <TableHead>Produto</TableHead>
@@ -580,48 +707,65 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard
-          icon={<MessageCircleWarning className="h-4 w-4" />}
-          label="Nunca respondidos"
-          value={overview.nuncaRespondido.toLocaleString("pt-BR")}
-          subtitle={
-            overview.pctNuncaRespondido !== null
-              ? `${Math.round(overview.pctNuncaRespondido * 100)}% dos chats com mensagem`
-              : undefined
-          }
-          tone={overview.nuncaRespondido > 0 ? "warning" : "default"}
-        />
-        <StatCard
-          icon={<Clock className="h-4 w-4" />}
-          label="Tempo médio de 1ª resposta"
-          value={formatMinutes(overview.avgResponseMinutes)}
-          subtitle="Só mensagens diretas — comentários não entram nessa conta"
-        />
-        <StatCard
-          icon={<Users2 className="h-4 w-4" />}
-          label="Chats sincronizados"
-          value={overview.totalChats.toLocaleString("pt-BR")}
-        />
-        <StatCard
-          icon={<Users2 className="h-4 w-4" />}
-          label="Mensagens diretas"
-          value={overview.totalDirectMessages.toLocaleString("pt-BR")}
-          subtitle="Conversa de verdade (DM), sem contar comentários"
-        />
-        <StatCard
-          icon={<MessageCircleWarning className="h-4 w-4" />}
-          label="Comentários no Instagram"
-          value={overview.totalComments.toLocaleString("pt-BR")}
-          subtitle="Comentário em post — contado à parte da conversa"
-        />
+      {/* Atendimento humano (DM) — separado dos comentários, que são respondidos por bot */}
+      <div className="space-y-3">
+        <SectionHeader icon={<Users2 className="h-3.5 w-3.5" />} title="Mensagens diretas — atendimento humano" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            icon={<MessageCircleWarning className="h-4 w-4" />}
+            label="Nunca respondidos"
+            value={overview.nuncaRespondido.toLocaleString("pt-BR")}
+            subtitle={
+              overview.pctNuncaRespondido !== null
+                ? `${Math.round(overview.pctNuncaRespondido * 100)}% dos chats com mensagem`
+                : undefined
+            }
+            tone={overview.nuncaRespondido > 0 ? "warning" : "default"}
+          />
+          <StatCard
+            icon={<Clock className="h-4 w-4" />}
+            label="Tempo médio de 1ª resposta"
+            value={formatMinutes(overview.avgResponseMinutes)}
+          />
+          <StatCard
+            icon={<Users2 className="h-4 w-4" />}
+            label="Chats sincronizados"
+            value={overview.totalChats.toLocaleString("pt-BR")}
+            subtitle={`${overview.totalComContato.toLocaleString("pt-BR")} com mensagem do cliente`}
+          />
+          <StatCard
+            icon={<Users2 className="h-4 w-4" />}
+            label="Mensagens diretas"
+            value={overview.totalDirectMessages.toLocaleString("pt-BR")}
+          />
+        </div>
+      </div>
+
+      {/* Comentários — visualmente separados: são auto-respondidos por bot, não é atendimento humano */}
+      <div className="rounded-xl border border-dashed border-border bg-muted/20 p-4 flex flex-wrap items-center gap-4">
+        <span className="flex items-center justify-center h-9 w-9 rounded-lg bg-muted text-muted-foreground shrink-0">
+          <Bot className="h-4 w-4" />
+        </span>
+        <div className="flex-1 min-w-[220px]">
+          <p className="text-sm font-medium">Comentários no Instagram</p>
+          <p className="text-xs text-muted-foreground">
+            Comentário em post, respondido automaticamente pelo ManyChat — não conta como atendimento
+            feito por uma pessoa, por isso fica separado das métricas acima.
+          </p>
+        </div>
+        <span className="text-xl font-bold font-heading text-muted-foreground shrink-0">
+          {overview.totalComments.toLocaleString("pt-BR")}
+        </span>
       </div>
 
       {unanswered.length > 0 && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/[0.04] p-4 space-y-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
             <AlertTriangle className="h-4 w-4" />
-            Leads que mandaram mensagem e nunca foram respondidos ({unanswered.length})
+            Leads que mandaram mensagem e nunca foram respondidos
+            <Badge variant="destructive" className="text-[10px]">
+              {unanswered.length}
+            </Badge>
           </div>
           <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
             {unanswered.map((u) => (
@@ -650,10 +794,8 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
 
       {byChannel.length > 0 && (
         <div className="rounded-xl border border-border overflow-hidden overflow-x-auto">
-          <div className="px-4 pt-4 pb-1">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Atendimento por canal (WhatsApp × Instagram)
-            </p>
+          <div className="px-4 pt-4 pb-2">
+            <SectionHeader title="Atendimento por canal (WhatsApp × Instagram)" />
           </div>
           <Table>
             <TableHeader>
@@ -699,14 +841,11 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
 
       {comments.recent.length > 0 && (
         <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <MessageCircleWarning className="h-4 w-4 text-primary" />
-            Comentários recentes no Instagram ({comments.total.toLocaleString("pt-BR")})
-          </div>
-          <p className="text-xs text-muted-foreground -mt-2">
-            Comentários em posts, separados das mensagens diretas — o ManyChat costuma responder por DM
-            automaticamente, então isso aqui não conta como &quot;atendimento&quot; feito por uma pessoa.
-          </p>
+          <SectionHeader
+            icon={<Bot className="h-3.5 w-3.5" />}
+            title="Comentários recentes no Instagram"
+            badge={comments.total.toLocaleString("pt-BR")}
+          />
           <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
             {comments.recent.map((cm) => (
               <div key={cm.id} className="rounded-lg border border-border bg-background p-2.5 text-sm">
@@ -728,11 +867,12 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
 
       {multiChannelContacts.length > 0 && (
         <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Users2 className="h-4 w-4 text-primary" />
-            Contatos conversando em mais de um canal ({multiChannelContacts.length})
-          </div>
-          <p className="text-xs text-muted-foreground -mt-2">
+          <SectionHeader
+            icon={<Users2 className="h-3.5 w-3.5" />}
+            title="Contatos conversando em mais de um canal"
+            badge={multiChannelContacts.length}
+          />
+          <p className="text-xs text-muted-foreground -mt-1.5">
             Podem estar mandando mensagem simultaneamente pelo WhatsApp e pelo Instagram — vale unificar o
             atendimento pra não responder duplicado (ou pior, deixar um dos dois sem resposta).
           </p>
@@ -754,10 +894,8 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
 
       {byOrigin.length > 0 && (
         <div className="rounded-xl border border-border overflow-hidden overflow-x-auto">
-          <div className="px-4 pt-4 pb-1">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Atendimento por origem
-            </p>
+          <div className="px-4 pt-4 pb-2">
+            <SectionHeader title="Atendimento por origem" />
           </div>
           <Table>
             <TableHeader>
@@ -831,6 +969,14 @@ export default function InteligenciaComercialPage() {
 
   const totalContactsClassified = overview.contactsWithDeal + overview.contactsWithoutDeal;
 
+  const sortedActions = [...actions].sort(
+    (a, b) => IMPACT_CONFIG[a.impacto].order - IMPACT_CONFIG[b.impacto].order
+  );
+  const impactCounts = actions.reduce<Record<string, number>>((acc, a) => {
+    acc[a.impacto] = (acc[a.impacto] ?? 0) + 1;
+    return acc;
+  }, {});
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       <div>
@@ -840,7 +986,7 @@ export default function InteligenciaComercialPage() {
         </h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           Contatos, negócios e atendimento sincronizados da Clint — cruzamentos de origem, produto e tempo
-          de resposta para decisões mais assertivas.
+          de resposta para decisões mais assertivas. Atualiza sozinho a cada 30 segundos.
         </p>
       </div>
 
@@ -891,12 +1037,14 @@ export default function InteligenciaComercialPage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <StatCard
+              size="compact"
               icon={<Timer className="h-4 w-4" />}
               label="Ciclo médio de fechamento"
               value={overview.avgDaysToWin !== null ? `${Math.round(overview.avgDaysToWin)} dias` : "—"}
               subtitle="Da criação do negócio até o ganho"
             />
             <StatCard
+              size="compact"
               icon={<TrendingUp className="h-4 w-4" />}
               label="Contatos com negócio ativo"
               value={
@@ -918,9 +1066,7 @@ export default function InteligenciaComercialPage() {
 
           {funnel.length > 0 && (
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Funil (negócios em aberto por etapa)
-              </p>
+              <SectionHeader title="Funil (negócios em aberto por etapa)" />
               <div className="space-y-3">
                 {funnel.map((stage) => (
                   <RankBar
@@ -947,9 +1093,7 @@ export default function InteligenciaComercialPage() {
         <TabsContent value="origem-produto" className="space-y-6 mt-4">
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Origens (por volume de negócios)
-              </p>
+              <SectionHeader title="Origens (por volume de negócios)" />
               <div className="space-y-3">
                 {topOrigins.map((origin) => {
                   const rate = originWinRate(origin);
@@ -971,9 +1115,7 @@ export default function InteligenciaComercialPage() {
             </div>
 
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Produtos (por receita)
-              </p>
+              <SectionHeader title="Produtos (por receita)" />
               {products.length === 0 ? (
                 <p className="text-sm text-muted-foreground/60">Nenhum negócio ganho com produto identificado ainda.</p>
               ) : (
@@ -994,10 +1136,8 @@ export default function InteligenciaComercialPage() {
 
           {originProductCross.length > 0 && (
             <div className="rounded-xl border border-border overflow-hidden overflow-x-auto">
-              <div className="px-4 pt-4 pb-1">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Cruzamento origem × produto (negócios ganhos, por receita)
-                </p>
+              <div className="px-4 pt-4 pb-2">
+                <SectionHeader title="Cruzamento origem × produto (negócios ganhos, por receita)" />
               </div>
               <Table>
                 <TableHeader>
@@ -1024,10 +1164,8 @@ export default function InteligenciaComercialPage() {
 
           {fontes.length > 0 && (
             <div className="rounded-xl border border-border overflow-hidden overflow-x-auto">
-              <div className="px-4 pt-4 pb-1">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Fonte do lead (canal de captação, mais granular que origem)
-                </p>
+              <div className="px-4 pt-4 pb-2">
+                <SectionHeader title="Fonte do lead (canal de captação, mais granular que origem)" />
               </div>
               <Table>
                 <TableHeader>
@@ -1062,25 +1200,25 @@ export default function InteligenciaComercialPage() {
         </TabsContent>
 
         <TabsContent value="contatos" className="space-y-6 mt-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <StatCard
-              icon={<Users2 className="h-4 w-4" />}
-              label="Com negócio associado"
-              value={overview.contactsWithDeal.toLocaleString("pt-BR")}
-            />
-            <StatCard
-              icon={<Users2 className="h-4 w-4" />}
-              label="Sem negócio associado"
-              value={overview.contactsWithoutDeal.toLocaleString("pt-BR")}
-              subtitle="Base sem oportunidade comercial criada"
+          <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+            <SectionHeader icon={<Users2 className="h-3.5 w-3.5" />} title="Base de contatos" />
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-heading">
+                {totalContactsClassified.toLocaleString("pt-BR")}
+              </span>
+              <span className="text-xs text-muted-foreground">contatos no total</span>
+            </div>
+            <SplitBar
+              a={overview.contactsWithDeal}
+              b={overview.contactsWithoutDeal}
+              aLabel="Com negócio"
+              bLabel="Sem negócio"
             />
           </div>
 
           {tags.length > 0 && (
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Tags mais usadas nos contatos
-              </p>
+              <SectionHeader title="Tags mais usadas nos contatos" />
               <div className="space-y-3">
                 {tags.map((tag) => (
                   <RankBar key={tag.name} label={tag.name} value={tag.count} maxValue={maxTagCount} />
@@ -1090,18 +1228,32 @@ export default function InteligenciaComercialPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="acoes" className="space-y-4 mt-4">
+        <TabsContent value="acoes" className="space-y-5 mt-4">
           {actions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhuma ação sugerida com os dados atuais.</p>
+            <div className="rounded-xl border border-dashed border-border p-8 text-center space-y-2">
+              <ListChecks className="h-6 w-6 text-muted-foreground/50 mx-auto" />
+              <p className="text-sm text-muted-foreground">Nenhuma ação sugerida com os dados atuais.</p>
+            </div>
           ) : (
             <>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <ListChecks className="h-4 w-4" />
-                Recomendações calculadas a partir dos dados sincronizados — revise antes de agir.
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <ListChecks className="h-3.5 w-3.5 shrink-0" />
+                  Recomendações calculadas a partir dos dados sincronizados — revise antes de agir.
+                </span>
+                <span className="flex-1" />
+                {(["Alto", "Médio", "Baixo"] as const)
+                  .filter((k) => impactCounts[k])
+                  .map((k) => (
+                    <Badge key={k} variant={IMPACT_CONFIG[k].badgeVariant} className="text-[11px] gap-1">
+                      {IMPACT_CONFIG[k].icon}
+                      {impactCounts[k]} de impacto {k.toLowerCase()}
+                    </Badge>
+                  ))}
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                {actions.map((action, i) => (
-                  <ActionCard key={i} action={action} />
+                {sortedActions.map((action, i) => (
+                  <ActionCard key={i} action={action} index={i} />
                 ))}
               </div>
             </>
