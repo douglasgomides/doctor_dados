@@ -12,6 +12,7 @@ const MASTER_ONLY_API_PREFIXES = [
   "/api/clientes",
   "/api/comercial",
   "/api/admin",
+  "/api/audit-log",
 ];
 
 // Rotas de API que exigem sessão válida, de qualquer papel.
@@ -74,5 +75,6 @@ export const config = {
     "/api/carousel/:path*",
     "/api/comercial/:path*",
     "/api/admin/:path*",
+    "/api/audit-log/:path*",
   ],
 };

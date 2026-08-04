@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { registrarAuditoria } from "@/lib/audit-log";
 import { Cliente } from "@/types";
 
 // Autenticação e restrição a papel "master" são impostas pelo middleware
@@ -29,8 +30,15 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const userId = req.headers.get("x-session-user-id");
+    const sessionName = req.headers.get("x-session-name");
     const { id } = await params;
     const data = await req.json();
+
+    const antes = await pool.query("SELECT * FROM clientes WHERE id = $1", [id]);
+    if (antes.rows.length === 0) {
+      return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 });
+    }
 
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -100,6 +108,16 @@ export async function PUT(
       [id]
     );
 
+    await registrarAuditoria({
+      entityType: "cliente",
+      entityId: id,
+      action: "edit",
+      actorId: userId,
+      actorName: sessionName,
+      before: antes.rows[0],
+      after: withResponsavel.rows[0],
+    });
+
     return NextResponse.json({ cliente: mapRow(withResponsavel.rows[0]) });
   } catch (error) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -112,17 +130,28 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const userId = req.headers.get("x-session-user-id");
+    const sessionName = req.headers.get("x-session-name");
     const { id } = await params;
 
-    const result = await pool.query("DELETE FROM clientes WHERE id = $1 RETURNING id", [id]);
+    const result = await pool.query("DELETE FROM clientes WHERE id = $1 RETURNING *", [id]);
 
     if (result.rows.length === 0) {
       return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 });
     }
+
+    await registrarAuditoria({
+      entityType: "cliente",
+      entityId: id,
+      action: "delete",
+      actorId: userId,
+      actorName: sessionName,
+      before: result.rows[0],
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { validateComercial } from "@/lib/comercial-validator";
+import { registrarAuditoria } from "@/lib/audit-log";
 import { ComercialAnalise, ComercialResultado } from "@/types";
 
 // Autenticação + restrição a "master" impostas pelo middleware (src/proxy.ts)
@@ -33,6 +34,8 @@ function mapRow(row: any): ComercialAnalise {
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const userId = req.headers.get("x-session-user-id");
+    const sessionName = req.headers.get("x-session-name");
     const { id } = await params;
     const existing = await pool.query("SELECT * FROM comercial_analises WHERE id = $1", [id]);
     if (existing.rows.length === 0) {
@@ -99,6 +102,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       values
     );
 
+    await registrarAuditoria({
+      entityType: "comercial",
+      entityId: id,
+      action: "edit",
+      actorId: userId,
+      actorName: sessionName,
+      before: row,
+      after: result.rows[0],
+    });
+
     return NextResponse.json({ analise: mapRow(result.rows[0]) });
   } catch (error) {
     console.error("Erro ao editar call comercial:", error);
@@ -106,15 +119,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const userId = req.headers.get("x-session-user-id");
+    const sessionName = req.headers.get("x-session-name");
     const { id } = await params;
-    const result = await pool.query("DELETE FROM comercial_analises WHERE id = $1 RETURNING id", [
+    const result = await pool.query("DELETE FROM comercial_analises WHERE id = $1 RETURNING *", [
       id,
     ]);
     if (result.rows.length === 0) {
       return NextResponse.json({ error: "Call comercial não encontrada." }, { status: 404 });
     }
+
+    await registrarAuditoria({
+      entityType: "comercial",
+      entityId: id,
+      action: "delete",
+      actorId: userId,
+      actorName: sessionName,
+      before: result.rows[0],
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Erro ao excluir call comercial:", error);

@@ -246,3 +246,34 @@ export interface PerformanceOverview {
   mediaGeralRoteiros: number;
   mediaGeralReunioes: number;
 }
+
+// ============================================
+// CENTRAL DE PENDÊNCIAS — mesma agregação usada no alerta diário de
+// WhatsApp (src/lib/pendencias.ts), disponível sob demanda dentro do app.
+// ============================================
+
+export type PendenciaTipo =
+  | "roteiro_ajustar"
+  | "reuniao_ajustar"
+  | "comercial_ajustar"
+  | "cadencia_roteiros"
+  | "cadencia_reunioes";
+
+export const PENDENCIA_TIPO_LABELS: Record<PendenciaTipo, string> = {
+  roteiro_ajustar: "Roteiro pendente de ajuste",
+  reuniao_ajustar: "Reunião pendente de ajuste",
+  comercial_ajustar: "Call comercial pendente de ajuste",
+  cadencia_roteiros: "Abaixo da meta de roteiros/semana",
+  cadencia_reunioes: "Abaixo da meta de reuniões/mês",
+};
+
+export interface Pendencia {
+  tipo: PendenciaTipo;
+  urgente: boolean;
+  clienteNome: string;
+  responsavelNome: string | null;
+  responsavelWhatsapp: string | null;
+  mensagem: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  detalhe: Record<string, any>;
+}

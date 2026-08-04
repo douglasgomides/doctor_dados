@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
 import { useComercialStore } from "@/store/comercial-store";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -44,18 +46,62 @@ import {
   TrendingUp,
   Pencil,
   Trash2,
+  Search,
 } from "lucide-react";
 import { ComercialAnalise, ComercialResultado, COMERCIAL_RESULTADO_LABELS } from "@/types";
+import { URGENTE_HORAS, horasDesde } from "@/lib/constants";
 import Link from "next/link";
 
+type Aba = "aprovados" | "ajustar" | "todos";
+
 export default function ComercialPage() {
+  return (
+    <Suspense fallback={null}>
+      <ComercialPageInner />
+    </Suspense>
+  );
+}
+
+function ComercialPageInner() {
   const currentUser = useAuthStore((s) => s.user);
   const { analises, fetchAnalises } = useComercialStore();
   const [selected, setSelected] = useState<ComercialAnalise | null>(null);
+  const [aba, setAba] = useState<Aba>("todos");
+  const [busca, setBusca] = useState("");
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   useEffect(() => {
     fetchAnalises();
   }, [fetchAnalises]);
+
+  useEffect(() => {
+    const id = searchParams.get("id");
+    if (!id || analises.length === 0) return;
+    const alvo = analises.find((a) => a.id === id);
+    if (alvo) {
+      setSelected(alvo);
+      router.replace("/dashboard/comercial", { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, analises.length]);
+
+  const filtradas = useMemo(() => {
+    let lista = analises;
+    if (aba === "aprovados") lista = analises.filter((a) => a.status === "aprovado");
+    else if (aba === "ajustar") lista = analises.filter((a) => a.status === "ajustar");
+
+    const q = busca.trim().toLowerCase();
+    if (q) {
+      lista = lista.filter(
+        (a) =>
+          (a.titulo || "").toLowerCase().includes(q) ||
+          a.participantes.join(", ").toLowerCase().includes(q) ||
+          a.content.toLowerCase().includes(q)
+      );
+    }
+    return lista;
+  }, [analises, aba, busca]);
 
   if (currentUser?.role !== "master") {
     redirect("/dashboard/visao-geral");
@@ -88,9 +134,27 @@ export default function ComercialPage() {
             <CardTitle className="text-base">Calls analisadas</CardTitle>
           </div>
           <CardDescription>
-            {analises.length} call{analises.length !== 1 ? "s" : ""} importada
+            {filtradas.length} de {analises.length} call{analises.length !== 1 ? "s" : ""} importada
             {analises.length !== 1 ? "s" : ""} automaticamente
           </CardDescription>
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Tabs value={aba} onValueChange={(v) => setAba(v as Aba)}>
+              <TabsList>
+                <TabsTrigger value="todos">Todas</TabsTrigger>
+                <TabsTrigger value="aprovados">Aprovadas</TabsTrigger>
+                <TabsTrigger value="ajustar">Ajustar</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por título, participante ou transcrição..."
+                className="h-8 pl-8 text-sm"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border border-border/50 overflow-hidden overflow-x-auto">
@@ -107,10 +171,11 @@ export default function ComercialPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {analises.map((a) => (
+                {filtradas.map((a) => (
                   <TableRow key={a.id} className="cursor-pointer" onClick={() => setSelected(a)}>
                     <TableCell className="text-muted-foreground text-sm">
                       {new Date(a.createdAt).toLocaleDateString("pt-BR")}
+                      {a.status === "ajustar" && <EsperaBadge createdAt={a.createdAt} />}
                     </TableCell>
                     <TableCell className="font-medium max-w-[220px] truncate">
                       {a.titulo || "Sem título"}
@@ -135,10 +200,12 @@ export default function ComercialPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {analises.length === 0 && (
+                {filtradas.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                      Nenhuma call comercial analisada ainda.
+                      {analises.length === 0
+                        ? "Nenhuma call comercial analisada ainda."
+                        : "Nenhuma call encontrada com esse filtro."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -156,6 +223,19 @@ export default function ComercialPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function EsperaBadge({ createdAt }: { createdAt: string }) {
+  const horas = horasDesde(createdAt);
+  const urgente = horas >= URGENTE_HORAS;
+  const texto = horas < 1 ? "menos de 1h" : `${Math.floor(horas)}h`;
+  return (
+    <span
+      className={`block text-[10px] mt-0.5 ${urgente ? "text-destructive font-medium" : "text-muted-foreground/70"}`}
+    >
+      esperando há {texto}
+    </span>
   );
 }
 
@@ -238,6 +318,16 @@ function ComercialDetalhe({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [ultimaEdicao, setUltimaEdicao] = useState<{ actorName: string | null; createdAt: string } | null>(
+    null
+  );
+
+  useEffect(() => {
+    fetch(`/api/audit-log/latest?entity=comercial&id=${analise.id}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setUltimaEdicao(data?.entrada || null))
+      .catch(() => setUltimaEdicao(null));
+  }, [analise.id]);
 
   const startEdit = () => {
     setEditForm({
@@ -347,7 +437,15 @@ function ComercialDetalhe({
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-4 text-sm">
-        <Badge variant="outline">Nota: {analise.score}/100</Badge>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="outline">Nota: {analise.score}/100</Badge>
+          {ultimaEdicao && (
+            <span className="text-xs text-muted-foreground">
+              Editado por {ultimaEdicao.actorName || "alguém da equipe"} em{" "}
+              {new Date(ultimaEdicao.createdAt).toLocaleString("pt-BR")}
+            </span>
+          )}
+        </div>
 
         <div className="rounded-lg border border-border p-3 space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
