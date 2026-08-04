@@ -162,6 +162,25 @@ export async function runMigrations(): Promise<void> {
     );
   `);
 
+  // Trilha de auditoria — quem editou/excluiu o quê, com snapshot completo
+  // do registro antes/depois (ver src/lib/audit-log.ts).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      entity_type VARCHAR(30) NOT NULL,
+      entity_id UUID NOT NULL,
+      action VARCHAR(10) NOT NULL,
+      actor_id UUID,
+      actor_name VARCHAR(255) NOT NULL,
+      before JSONB,
+      after JSONB,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id);`
+  );
+
   // Índices nas colunas mais filtradas pelos dashboards agregados e pelas
   // rotas de listagem — sem efeito hoje com o volume atual, mas evita virar
   // seq scan conforme o histórico crescer.

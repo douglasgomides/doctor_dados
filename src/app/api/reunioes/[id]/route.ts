@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { validateReuniao } from "@/lib/reuniao-validator";
 import { findOrCreateClienteId } from "@/lib/clientes";
+import { registrarAuditoria } from "@/lib/audit-log";
 import { Reuniao, ReuniaoStatus, ReuniaoTipo } from "@/types";
 
 // Autenticação é imposta pelo middleware (src/proxy.ts) para todo o
@@ -151,6 +152,16 @@ export async function PATCH(
       );
     }
 
+    await registrarAuditoria({
+      entityType: "reuniao",
+      entityId: id,
+      action: "edit",
+      actorId: userId,
+      actorName: sessionName,
+      before: row,
+      after: reuniao,
+    });
+
     return NextResponse.json({ reuniao: mapRow(reuniao) });
   } catch (error) {
     console.error("Erro ao editar reunião:", error);
@@ -165,9 +176,10 @@ export async function DELETE(
   try {
     const role = req.headers.get("x-session-role");
     const userId = req.headers.get("x-session-user-id");
+    const sessionName = req.headers.get("x-session-name");
     const { id } = await params;
 
-    const existing = await pool.query("SELECT author_id FROM reunioes WHERE id = $1", [id]);
+    const existing = await pool.query("SELECT * FROM reunioes WHERE id = $1", [id]);
     if (existing.rows.length === 0) {
       return NextResponse.json({ error: "Reunião não encontrada." }, { status: 404 });
     }
@@ -178,6 +190,16 @@ export async function DELETE(
     }
 
     await pool.query("DELETE FROM reunioes WHERE id = $1", [id]);
+
+    await registrarAuditoria({
+      entityType: "reuniao",
+      entityId: id,
+      action: "delete",
+      actorId: userId,
+      actorName: sessionName,
+      before: existing.rows[0],
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Erro ao excluir reunião:", error);

@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth-store";
+import { usePendenciasStore } from "@/store/pendencias-store";
 import {
   Settings,
   LogOut,
@@ -17,12 +18,13 @@ import {
   TrendingUp,
   Wand2,
   Briefcase,
+  Inbox,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { UserRole } from "@/types";
 import type { LucideIcon } from "lucide-react";
 
@@ -33,8 +35,14 @@ interface NavItem {
   badge?: string;
 }
 
+// Intervalo de polling da Central de Pendências pra alimentar o badge do
+// menu — não precisa ser em tempo real, só evitar que o time só descubra
+// pendência nova quando abrir a tela.
+const PENDENCIAS_POLL_MS = 3 * 60 * 1000;
+
 const VISAO_GERAL_ITEMS: NavItem[] = [
   { name: "Visão Geral", href: "/dashboard/visao-geral", icon: Sparkles },
+  { name: "Central de Pendências", href: "/dashboard/pendencias", icon: Inbox },
 ];
 
 // Qualidade agrupa tudo que valida conteúdo/entrega da equipe pro médico-
@@ -84,8 +92,20 @@ export function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const [collapsed, setCollapsed] = useState(false);
+  const pendencias = usePendenciasStore((s) => s.pendencias);
+  const fetchPendencias = usePendenciasStore((s) => s.fetchPendencias);
+
+  useEffect(() => {
+    if (user?.role !== "master") return;
+    fetchPendencias();
+    const interval = setInterval(fetchPendencias, PENDENCIAS_POLL_MS);
+    return () => clearInterval(interval);
+  }, [user?.role, fetchPendencias]);
 
   if (!user) return null;
+
+  const pendenciasCount = pendencias.length;
+  const pendenciasUrgente = pendencias.some((p) => p.urgente);
 
   const initials = user.name
     .split(" ")
@@ -142,6 +162,16 @@ export function Sidebar() {
                   {!collapsed && (
                     <span className="flex items-center gap-1.5">
                       {item.name}
+                      {item.href === "/dashboard/pendencias" && pendenciasCount > 0 && (
+                        <Badge
+                          className={cn(
+                            "text-[9px] px-1.5 py-0 h-4 !text-white",
+                            pendenciasUrgente ? "!bg-destructive" : "!bg-muted-foreground"
+                          )}
+                        >
+                          {pendenciasCount}
+                        </Badge>
+                      )}
                       {item.badge && (
                         <Badge
                           variant="outline"

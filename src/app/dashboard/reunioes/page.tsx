@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
 import { useReunioesStore } from "@/store/reunioes-store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -42,8 +44,10 @@ import {
   Lightbulb,
   Pencil,
   Trash2,
+  Search,
 } from "lucide-react";
 import { Reuniao, ReuniaoTipo, REUNIAO_TIPO_LABELS, ROTEIRO_FORMAT_LABELS } from "@/types";
+import { URGENTE_HORAS, horasDesde } from "@/lib/constants";
 
 // "grupo" fica de fora das opções do formulário (criação e edição): o campo
 // de cliente aqui é um texto único, então não tem como representar vários
@@ -51,11 +55,22 @@ import { Reuniao, ReuniaoTipo, REUNIAO_TIPO_LABELS, ROTEIRO_FORMAT_LABELS } from
 // importação automática do Meet, que vincula todos os clientes envolvidos
 // via a tabela de junção reuniao_clientes.
 const TIPO_OPTIONS: ReuniaoTipo[] = ["mentoria", "onboarding", "pontual"];
+type Aba = "pendentes" | "aprovados" | "ajustar" | "todos";
 
 export default function ReunioesPage() {
+  return (
+    <Suspense fallback={null}>
+      <ReunioesPageInner />
+    </Suspense>
+  );
+}
+
+function ReunioesPageInner() {
   const user = useAuthStore((s) => s.user);
   const { reunioes, fetchReunioes, submitReuniao, reviewReuniao, deleteReuniao } =
     useReunioesStore();
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   const [form, setForm] = useState({
     clientName: "",
@@ -75,13 +90,56 @@ export default function ReunioesPage() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState("");
+  const [aba, setAba] = useState<Aba>("pendentes");
+  const [busca, setBusca] = useState("");
+  const [ultimaEdicao, setUltimaEdicao] = useState<{ actorName: string | null; createdAt: string } | null>(
+    null
+  );
 
   useEffect(() => {
     fetchReunioes();
   }, [fetchReunioes]);
 
+  useEffect(() => {
+    if (!selected || user?.role !== "master") {
+      setUltimaEdicao(null);
+      return;
+    }
+    fetch(`/api/audit-log/latest?entity=reuniao&id=${selected.id}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setUltimaEdicao(data?.entrada || null))
+      .catch(() => setUltimaEdicao(null));
+  }, [selected, user?.role]);
+
   const isMaster = user?.role === "master";
   const podeEditar = (r: Reuniao | null) => !!r && (isMaster || r.authorId === user?.id);
+
+  const filaPendentes = useMemo(
+    () =>
+      [...reunioes]
+        .filter((r) => !r.reviewedByName)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+    [reunioes]
+  );
+
+  const filtrados = useMemo(() => {
+    let lista = reunioes;
+    if (aba === "pendentes") lista = reunioes.filter((r) => !r.reviewedByName);
+    else if (aba === "aprovados") lista = reunioes.filter((r) => r.status === "aprovado");
+    else if (aba === "ajustar") lista = reunioes.filter((r) => r.status === "ajustar");
+
+    const q = busca.trim().toLowerCase();
+    if (q) {
+      lista = lista.filter(
+        (r) => r.clientName.toLowerCase().includes(q) || r.content.toLowerCase().includes(q)
+      );
+    }
+
+    if (aba === "pendentes") {
+      lista = [...lista].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    }
+    return lista;
+  }, [reunioes, aba, busca]);
 
   const handleSubmit = async () => {
     if (!form.clientName.trim() || !form.content.trim()) return;
@@ -104,11 +162,64 @@ export default function ReunioesPage() {
     setEditError("");
   };
 
+  useEffect(() => {
+    const id = searchParams.get("id");
+    if (!id || reunioes.length === 0) return;
+    const alvo = reunioes.find((r) => r.id === id);
+    if (alvo) {
+      openReview(alvo);
+      router.replace("/dashboard/reunioes", { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, reunioes.length]);
+
+  const irNaFila = (direcao: 1 | -1) => {
+    if (!selected) return;
+    const idx = filaPendentes.findIndex((r) => r.id === selected.id);
+    if (idx === -1) return;
+    const proximo = filaPendentes[idx + direcao];
+    if (proximo) openReview(proximo);
+  };
+
   const handleReview = async (status: Reuniao["status"]) => {
     if (!selected) return;
-    await reviewReuniao(selected.id, { status, reviewNote });
-    setSelected(null);
+    const idx = filaPendentes.findIndex((r) => r.id === selected.id);
+    const result = await reviewReuniao(selected.id, { status, reviewNote });
+    if (!result.success) {
+      setEditError(result.error || "Erro ao revisar reunião.");
+      return;
+    }
+    const proximo = idx !== -1 ? filaPendentes[idx + 1] : undefined;
+    if (proximo) {
+      openReview(proximo);
+    } else {
+      setSelected(null);
+    }
   };
+
+  useEffect(() => {
+    if (!selected || editing || !isMaster) return;
+    function onKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "a" || e.key === "A") {
+        e.preventDefault();
+        handleReview("aprovado");
+      } else if (e.key === "j" || e.key === "J") {
+        e.preventDefault();
+        handleReview("ajustar");
+      } else if (e.key === "n" || e.key === "N" || e.key === "ArrowRight") {
+        e.preventDefault();
+        irNaFila(1);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        irNaFila(-1);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, editing, isMaster, filaPendentes, reviewNote]);
 
   const startEdit = () => {
     if (!selected) return;
@@ -143,6 +254,8 @@ export default function ReunioesPage() {
       setEditError(result.error || "Erro ao excluir reunião.");
     }
   };
+
+  const pendentesCount = filaPendentes.length;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -230,9 +343,27 @@ export default function ReunioesPage() {
             </CardTitle>
           </div>
           <CardDescription>
-            {reunioes.length} {reunioes.length !== 1 ? "reuniões" : "reunião"} registrada
-            {reunioes.length !== 1 ? "s" : ""}
+            {filtrados.length} de {reunioes.length} reunião{reunioes.length !== 1 ? "ões" : ""}
           </CardDescription>
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Tabs value={aba} onValueChange={(v) => setAba(v as Aba)}>
+              <TabsList>
+                <TabsTrigger value="pendentes">Pendentes ({pendentesCount})</TabsTrigger>
+                <TabsTrigger value="aprovados">Aprovados</TabsTrigger>
+                <TabsTrigger value="ajustar">Ajustar</TabsTrigger>
+                <TabsTrigger value="todos">Todos</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por cliente ou transcrição..."
+                className="h-8 pl-8 text-sm"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border border-border/50 overflow-hidden overflow-x-auto">
@@ -249,10 +380,11 @@ export default function ReunioesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {reunioes.map((r) => (
+                {filtrados.map((r) => (
                   <TableRow key={r.id} className="cursor-pointer" onClick={() => openReview(r)}>
                     <TableCell className="text-muted-foreground text-sm">
                       {new Date(r.createdAt).toLocaleDateString("pt-BR")}
+                      {!r.reviewedByName && <EsperaBadge createdAt={r.createdAt} />}
                     </TableCell>
                     <TableCell className="font-medium">
                       {r.clientName}
@@ -275,10 +407,12 @@ export default function ReunioesPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {reunioes.length === 0 && (
+                {filtrados.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={isMaster ? 7 : 6} className="text-center text-muted-foreground py-8">
-                      Nenhuma reunião registrada ainda.
+                      {reunioes.length === 0
+                        ? "Nenhuma reunião registrada ainda."
+                        : "Nenhuma reunião encontrada com esse filtro."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -304,6 +438,12 @@ export default function ReunioesPage() {
                 <DialogDescription>
                   Registrado por {selected.authorName} em{" "}
                   {new Date(selected.createdAt).toLocaleString("pt-BR")}
+                  {isMaster && !editing && filaPendentes.length > 1 && !selected.reviewedByName && (
+                    <span className="block mt-1 text-[11px]">
+                      Atalhos: A aprovar · J pedir ajuste · N próximo · fila com{" "}
+                      {filaPendentes.length} pendente{filaPendentes.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
                 </DialogDescription>
               </DialogHeader>
 
@@ -405,6 +545,13 @@ export default function ReunioesPage() {
                     </p>
                   )}
 
+                  {ultimaEdicao && (
+                    <p className="text-xs text-muted-foreground">
+                      Editado por {ultimaEdicao.actorName || "alguém da equipe"} em{" "}
+                      {new Date(ultimaEdicao.createdAt).toLocaleString("pt-BR")}
+                    </p>
+                  )}
+
                   {editError && (
                     <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
                       {editError}
@@ -440,6 +587,19 @@ export default function ReunioesPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function EsperaBadge({ createdAt }: { createdAt: string }) {
+  const horas = horasDesde(createdAt);
+  const urgente = horas >= URGENTE_HORAS;
+  const texto = horas < 1 ? "menos de 1h" : `${Math.floor(horas)}h`;
+  return (
+    <span
+      className={`block text-[10px] mt-0.5 ${urgente ? "text-destructive font-medium" : "text-muted-foreground/70"}`}
+    >
+      esperando há {texto}
+    </span>
   );
 }
 

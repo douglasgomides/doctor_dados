@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
 import { useRoteirosStore } from "@/store/roteiros-store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -32,15 +34,36 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { ClipboardCheck, CheckCircle2, AlertTriangle, XCircle, FileText, Pencil, Trash2 } from "lucide-react";
+import {
+  ClipboardCheck,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  FileText,
+  Pencil,
+  Trash2,
+  Search,
+} from "lucide-react";
 import { Roteiro, RoteiroFormat, ROTEIRO_FORMAT_LABELS } from "@/types";
+import { URGENTE_HORAS, horasDesde } from "@/lib/constants";
 
 const FORMAT_OPTIONS: RoteiroFormat[] = ["reel", "carrossel", "stories"];
+type Aba = "pendentes" | "aprovados" | "ajustar" | "todos";
 
 export default function RoteirosPage() {
+  return (
+    <Suspense fallback={null}>
+      <RoteirosPageInner />
+    </Suspense>
+  );
+}
+
+function RoteirosPageInner() {
   const user = useAuthStore((s) => s.user);
   const { roteiros, fetchRoteiros, submitRoteiro, reviewRoteiro, deleteRoteiro } =
     useRoteirosStore();
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   const [form, setForm] = useState({
     clientName: "",
@@ -62,14 +85,88 @@ export default function RoteirosPage() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState("");
+  const [aba, setAba] = useState<Aba>("pendentes");
+  const [busca, setBusca] = useState("");
+  const [ultimaEdicao, setUltimaEdicao] = useState<{ actorName: string | null; createdAt: string } | null>(
+    null
+  );
 
   useEffect(() => {
     fetchRoteiros();
   }, [fetchRoteiros]);
 
+  // Quem editou esse roteiro por último (fora do fluxo de revisão, que já
+  // tem seu próprio rastro em reviewedByName) — trilha de auditoria criada
+  // pra dar visibilidade de "alguém mexeu nisso" sem precisar perguntar.
+  useEffect(() => {
+    if (!selected || user?.role !== "master") {
+      setUltimaEdicao(null);
+      return;
+    }
+    fetch(`/api/audit-log/latest?entity=roteiro&id=${selected.id}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setUltimaEdicao(data?.entrada || null))
+      .catch(() => setUltimaEdicao(null));
+  }, [selected, user?.role]);
+
   const isMaster = user?.role === "master";
   const podeEditar = (r: Roteiro | null) =>
     !!r && (isMaster || r.authorId === user?.id);
+
+  // Fila real de "ainda não foi revisado por um humano" — independe de qual
+  // aba está selecionada na tela, é o que orienta a navegação em sequência
+  // (Próximo/Anterior, avançar automático ao decidir) e os atalhos de
+  // teclado. Ordenada do mais antigo pro mais novo, igual à prioridade que
+  // o alerta de WhatsApp já usa.
+  const filaPendentes = useMemo(
+    () =>
+      [...roteiros]
+        .filter((r) => !r.reviewedByName)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+    [roteiros]
+  );
+
+  const filtrados = useMemo(() => {
+    let lista = roteiros;
+    if (aba === "pendentes") lista = roteiros.filter((r) => !r.reviewedByName);
+    else if (aba === "aprovados") lista = roteiros.filter((r) => r.status === "aprovado");
+    else if (aba === "ajustar") lista = roteiros.filter((r) => r.status === "ajustar");
+
+    const q = busca.trim().toLowerCase();
+    if (q) {
+      lista = lista.filter(
+        (r) =>
+          r.clientName.toLowerCase().includes(q) ||
+          r.title.toLowerCase().includes(q) ||
+          r.content.toLowerCase().includes(q)
+      );
+    }
+
+    if (aba === "pendentes") {
+      lista = [...lista].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    }
+    return lista;
+  }, [roteiros, aba, busca]);
+
+  const openReview = (roteiro: Roteiro) => {
+    setSelected(roteiro);
+    setReviewNote(roteiro.reviewNote || "");
+    setEditing(false);
+    setEditError("");
+  };
+
+  // Deep link: ?id=<roteiroId> abre o registro certo direto, usado pela
+  // Central de Pendências e por qualquer link mandado internamente.
+  useEffect(() => {
+    const id = searchParams.get("id");
+    if (!id || roteiros.length === 0) return;
+    const alvo = roteiros.find((r) => r.id === id);
+    if (alvo) {
+      openReview(alvo);
+      router.replace("/dashboard/roteiros", { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, roteiros.length]);
 
   const handleSubmit = async () => {
     if (!form.clientName.trim() || !form.content.trim()) return;
@@ -85,18 +182,59 @@ export default function RoteirosPage() {
     setForm({ clientName: form.clientName, format: form.format, title: "", content: "" });
   };
 
-  const openReview = (roteiro: Roteiro) => {
-    setSelected(roteiro);
-    setReviewNote(roteiro.reviewNote || "");
-    setEditing(false);
-    setEditError("");
+  const irNaFila = (direcao: 1 | -1) => {
+    if (!selected) return;
+    const idx = filaPendentes.findIndex((r) => r.id === selected.id);
+    if (idx === -1) return;
+    const proximo = filaPendentes[idx + direcao];
+    if (proximo) openReview(proximo);
   };
 
   const handleReview = async (status: Roteiro["status"]) => {
     if (!selected) return;
-    await reviewRoteiro(selected.id, { status, reviewNote });
-    setSelected(null);
+    const idx = filaPendentes.findIndex((r) => r.id === selected.id);
+    const result = await reviewRoteiro(selected.id, { status, reviewNote });
+    if (!result.success) {
+      setEditError(result.error || "Erro ao revisar roteiro.");
+      return;
+    }
+    // Avança pro próximo item pendente da fila em vez de fechar o modal —
+    // evita o ciclo de reabrir a tabela e procurar a linha certa de novo.
+    const proximo = idx !== -1 ? filaPendentes[idx + 1] : undefined;
+    if (proximo) {
+      openReview(proximo);
+    } else {
+      setSelected(null);
+    }
   };
+
+  // Atalhos de teclado enquanto o modal de revisão está aberto: A = aprovar,
+  // J = pedir ajuste, N/→ = próximo sem decidir, ← = anterior. Ignorado
+  // enquanto o foco está num campo de texto (ex: escrevendo a nota de
+  // revisão) pra não disparar sem querer.
+  useEffect(() => {
+    if (!selected || editing || !isMaster) return;
+    function onKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "a" || e.key === "A") {
+        e.preventDefault();
+        handleReview("aprovado");
+      } else if (e.key === "j" || e.key === "J") {
+        e.preventDefault();
+        handleReview("ajustar");
+      } else if (e.key === "n" || e.key === "N" || e.key === "ArrowRight") {
+        e.preventDefault();
+        irNaFila(1);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        irNaFila(-1);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, editing, isMaster, filaPendentes, reviewNote]);
 
   const startEdit = () => {
     if (!selected) return;
@@ -136,6 +274,8 @@ export default function RoteirosPage() {
       setEditError(result.error || "Erro ao excluir roteiro.");
     }
   };
+
+  const pendentesCount = filaPendentes.length;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -237,9 +377,27 @@ export default function RoteirosPage() {
             </CardTitle>
           </div>
           <CardDescription>
-            {roteiros.length} roteiro{roteiros.length !== 1 ? "s" : ""} registrado
-            {roteiros.length !== 1 ? "s" : ""}
+            {filtrados.length} de {roteiros.length} roteiro{roteiros.length !== 1 ? "s" : ""}
           </CardDescription>
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Tabs value={aba} onValueChange={(v) => setAba(v as Aba)}>
+              <TabsList>
+                <TabsTrigger value="pendentes">Pendentes ({pendentesCount})</TabsTrigger>
+                <TabsTrigger value="aprovados">Aprovados</TabsTrigger>
+                <TabsTrigger value="ajustar">Ajustar</TabsTrigger>
+                <TabsTrigger value="todos">Todos</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por cliente, título ou conteúdo..."
+                className="h-8 pl-8 text-sm"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border border-border/50 overflow-hidden overflow-x-auto">
@@ -256,10 +414,11 @@ export default function RoteirosPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {roteiros.map((r) => (
+                {filtrados.map((r) => (
                   <TableRow key={r.id} className="cursor-pointer" onClick={() => openReview(r)}>
                     <TableCell className="text-muted-foreground text-sm">
                       {new Date(r.createdAt).toLocaleDateString("pt-BR")}
+                      {!r.reviewedByName && <EsperaBadge createdAt={r.createdAt} />}
                     </TableCell>
                     <TableCell className="font-medium">
                       {r.clientName}
@@ -282,10 +441,12 @@ export default function RoteirosPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {roteiros.length === 0 && (
+                {filtrados.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={isMaster ? 7 : 6} className="text-center text-muted-foreground py-8">
-                      Nenhum roteiro enviado ainda.
+                      {roteiros.length === 0
+                        ? "Nenhum roteiro enviado ainda."
+                        : "Nenhum roteiro encontrado com esse filtro."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -312,6 +473,12 @@ export default function RoteirosPage() {
                   {selected.clientName} · {ROTEIRO_FORMAT_LABELS[selected.format]} · enviado por{" "}
                   {selected.authorName} em{" "}
                   {new Date(selected.createdAt).toLocaleString("pt-BR")}
+                  {isMaster && !editing && filaPendentes.length > 1 && !selected.reviewedByName && (
+                    <span className="block mt-1 text-[11px]">
+                      Atalhos: A aprovar · J pedir ajuste · N próximo · fila com{" "}
+                      {filaPendentes.length} pendente{filaPendentes.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
                 </DialogDescription>
               </DialogHeader>
 
@@ -409,6 +576,13 @@ export default function RoteirosPage() {
                     </p>
                   )}
 
+                  {ultimaEdicao && (
+                    <p className="text-xs text-muted-foreground">
+                      Editado por {ultimaEdicao.actorName || "alguém da equipe"} em{" "}
+                      {new Date(ultimaEdicao.createdAt).toLocaleString("pt-BR")}
+                    </p>
+                  )}
+
                   {editError && (
                     <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
                       {editError}
@@ -444,6 +618,19 @@ export default function RoteirosPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function EsperaBadge({ createdAt }: { createdAt: string }) {
+  const horas = horasDesde(createdAt);
+  const urgente = horas >= URGENTE_HORAS;
+  const texto = horas < 1 ? "menos de 1h" : `${Math.floor(horas)}h`;
+  return (
+    <span
+      className={`block text-[10px] mt-0.5 ${urgente ? "text-destructive font-medium" : "text-muted-foreground/70"}`}
+    >
+      esperando há {texto}
+    </span>
   );
 }
 

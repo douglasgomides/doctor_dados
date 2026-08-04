@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { requireFreshMasterSession } from "@/lib/session-guard";
+import { registrarAuditoria } from "@/lib/audit-log";
+
+// Nunca gravar o campo "password" (nem o hash) no snapshot da auditoria —
+// não tem valor pra saber "o que mudou" e é só mais um lugar onde um hash
+// de senha ficaria armazenado sem necessidade.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function semSenha(row: any) {
+  if (!row) return row;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { password, ...resto } = row;
+  return resto;
+}
 
 // Autenticação e restrição a papel "master" são impostas pelo middleware
 // (src/proxy.ts) para todo o prefixo /api/users. requireFreshMasterSession
@@ -19,8 +31,15 @@ export async function PUT(
     const denied = await requireFreshMasterSession(req);
     if (denied) return denied;
 
+    const actorId = req.headers.get("x-session-user-id");
+    const actorName = req.headers.get("x-session-name");
     const { id } = await params;
     const data = await req.json();
+
+    const antes = await pool.query("SELECT * FROM dash_users WHERE id = $1", [id]);
+    if (antes.rows.length === 0) {
+      return NextResponse.json({ error: "Usuário não encontrado." }, { status: 404 });
+    }
 
     if (data.role !== undefined && !VALID_ROLES.has(data.role)) {
       return NextResponse.json({ error: "Papel (role) inválido." }, { status: 400 });
@@ -71,8 +90,7 @@ export async function PUT(
     values.push(id);
 
     const result = await pool.query(
-      `UPDATE dash_users SET ${fields.join(", ")} WHERE id = $${paramIndex}
-       RETURNING id, email, name, role, telefone_whatsapp`,
+      `UPDATE dash_users SET ${fields.join(", ")} WHERE id = $${paramIndex} RETURNING *`,
       values
     );
 
@@ -81,6 +99,17 @@ export async function PUT(
     }
 
     const row = result.rows[0];
+
+    await registrarAuditoria({
+      entityType: "usuario",
+      entityId: id,
+      action: "edit",
+      actorId,
+      actorName,
+      before: semSenha(antes.rows[0]),
+      after: semSenha(row),
+    });
+
     return NextResponse.json({
       user: {
         id: row.id,
@@ -108,16 +137,27 @@ export async function DELETE(
     const denied = await requireFreshMasterSession(req);
     if (denied) return denied;
 
+    const actorId = req.headers.get("x-session-user-id");
+    const actorName = req.headers.get("x-session-name");
     const { id } = await params;
 
     const result = await pool.query(
-      "DELETE FROM dash_users WHERE id = $1 RETURNING id",
+      "DELETE FROM dash_users WHERE id = $1 RETURNING *",
       [id]
     );
 
     if (result.rows.length === 0) {
       return NextResponse.json({ error: "Usuário não encontrado." }, { status: 404 });
     }
+
+    await registrarAuditoria({
+      entityType: "usuario",
+      entityId: id,
+      action: "delete",
+      actorId,
+      actorName,
+      before: semSenha(result.rows[0]),
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

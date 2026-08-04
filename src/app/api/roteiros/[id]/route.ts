@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { validateRoteiro } from "@/lib/roteiro-validator";
 import { findOrCreateClienteId } from "@/lib/clientes";
+import { registrarAuditoria } from "@/lib/audit-log";
 import { Roteiro, RoteiroFormat, RoteiroStatus } from "@/types";
 
 // Autenticação é imposta pelo middleware (src/proxy.ts) para todo o
@@ -137,6 +138,16 @@ export async function PATCH(
       values
     );
 
+    await registrarAuditoria({
+      entityType: "roteiro",
+      entityId: id,
+      action: "edit",
+      actorId: userId,
+      actorName: sessionName,
+      before: row,
+      after: result.rows[0],
+    });
+
     return NextResponse.json({ roteiro: mapRow(result.rows[0]) });
   } catch (error) {
     console.error("Erro ao editar roteiro:", error);
@@ -151,9 +162,10 @@ export async function DELETE(
   try {
     const role = req.headers.get("x-session-role");
     const userId = req.headers.get("x-session-user-id");
+    const sessionName = req.headers.get("x-session-name");
     const { id } = await params;
 
-    const existing = await pool.query("SELECT author_id FROM roteiros WHERE id = $1", [id]);
+    const existing = await pool.query("SELECT * FROM roteiros WHERE id = $1", [id]);
     if (existing.rows.length === 0) {
       return NextResponse.json({ error: "Roteiro não encontrado." }, { status: 404 });
     }
@@ -164,6 +176,16 @@ export async function DELETE(
     }
 
     await pool.query("DELETE FROM roteiros WHERE id = $1", [id]);
+
+    await registrarAuditoria({
+      entityType: "roteiro",
+      entityId: id,
+      action: "delete",
+      actorId: userId,
+      actorName: sessionName,
+      before: existing.rows[0],
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Erro ao excluir roteiro:", error);
