@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
-import { fetchMessagesForChat } from "@/lib/clint";
+import { fetchMessagesForChat, fetchChatsForContact } from "@/lib/clint";
 
 // Endpoint de diagnóstico, só leitura, pra inspecionar o formato real das
 // mensagens já sincronizadas de um canal específico (ex: Instagram) sem
@@ -26,6 +26,8 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(50, Math.max(1, Number(req.nextUrl.searchParams.get("limit")) || 25));
   const chatIds = req.nextUrl.searchParams.getAll("chatId");
   const liveChatId = req.nextUrl.searchParams.get("liveChatId");
+  const liveContactId = req.nextUrl.searchParams.get("liveContactId");
+  const searchContact = req.nextUrl.searchParams.get("searchContact");
 
   // Modo "live": chama a API REST oficial da Clint (a mesma que já usamos
   // pra sincronizar) direto pra esse chat_id, sem passar pelo nosso banco —
@@ -39,6 +41,51 @@ export async function GET(req: NextRequest) {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro desconhecido.";
       return NextResponse.json({ liveChatId, error: message });
+    }
+  }
+
+  // Modo "live contato": chama /v2/chats/contact/{contactId} AO VIVO (não
+  // do nosso banco) pra um contact_id específico — pra testar se o
+  // endpoint documentado realmente devolve os chats de Instagram desse
+  // contato, ou se devolve vazio mesmo com o contact_id certo.
+  if (liveContactId) {
+    try {
+      const response = await fetchChatsForContact(liveContactId, 1, 200);
+      return NextResponse.json({ liveContactId, response });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido.";
+      return NextResponse.json({ liveContactId, error: message });
+    }
+  }
+
+  // Modo "buscar contato": procura por nome/e-mail nos contatos e negócios
+  // já sincronizados, pra achar o contact_id de uma pessoa específica (ex:
+  // achada numa conversa de Instagram) e comparar com o contact_id que a
+  // Clint usa pra atendimento.
+  if (searchContact) {
+    try {
+      const term = `%${searchContact}%`;
+      const [contactsResult, dealsResult] = await Promise.all([
+        pool.query(
+          `SELECT id, name, email, username, full_phone FROM clint_contacts WHERE name ILIKE $1 OR email ILIKE $1 OR username ILIKE $1 LIMIT 20`,
+          [term]
+        ),
+        pool.query(
+          `
+          SELECT d.id AS deal_id, d.contact_id, d.contact_name, d.fields->>'email' AS email,
+                 COALESCE(o.name, 'Sem origem') AS origin_name, d.fields->>'fonte' AS fonte
+          FROM clint_deals d
+          LEFT JOIN clint_origins o ON o.id = d.origin_id
+          WHERE d.contact_name ILIKE $1 OR d.fields->>'email' ILIKE $1
+          LIMIT 20
+          `,
+          [term]
+        ),
+      ]);
+      return NextResponse.json({ contacts: contactsResult.rows, deals: dealsResult.rows });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido.";
+      return NextResponse.json({ error: message }, { status: 500 });
     }
   }
 
