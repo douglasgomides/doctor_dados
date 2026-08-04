@@ -734,31 +734,34 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
         </div>
       )}
 
-      {/* Atendimento humano (DM) — separado dos comentários, que são respondidos por bot */}
+      {/* Atendimento humano de verdade — só conta como "respondido" quando uma PESSOA do
+          time respondeu (user_id preenchido). Uma resposta automática do bot não conta,
+          senão o time parece mais rápido/presente do que realmente está. */}
       <div className="space-y-3">
-        <SectionHeader icon={<Users2 className="h-3.5 w-3.5" />} title="Mensagens diretas — atendimento humano" />
+        <SectionHeader icon={<Users2 className="h-3.5 w-3.5" />} title="Atendimento humano" />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             icon={<MessageCircleWarning className="h-4 w-4" />}
-            label="Nunca respondidos"
+            label="Sem nenhuma resposta"
             value={overview.nuncaRespondido.toLocaleString("pt-BR")}
             subtitle={
               overview.pctNuncaRespondido !== null
-                ? `${Math.round(overview.pctNuncaRespondido * 100)}% dos chats com mensagem`
-                : undefined
+                ? `${Math.round(overview.pctNuncaRespondido * 100)}% dos chats — nem bot, nem humano respondeu`
+                : "Nem bot, nem humano respondeu"
             }
             tone={overview.nuncaRespondido > 0 ? "warning" : "default"}
           />
           <StatCard
             icon={<Clock className="h-4 w-4" />}
-            label="Tempo médio de 1ª resposta"
+            label="Tempo médio de resposta humana"
             value={formatMinutes(overview.avgResponseMinutes)}
+            subtitle="Só conta quando uma pessoa do time respondeu"
           />
           <StatCard
             icon={<Users2 className="h-4 w-4" />}
-            label="Chats sincronizados"
-            value={overview.totalChats.toLocaleString("pt-BR")}
-            subtitle={`${overview.totalComContato.toLocaleString("pt-BR")} com mensagem do cliente`}
+            label="Chats com atendimento humano"
+            value={overview.totalAtendimentoHumano.toLocaleString("pt-BR")}
+            subtitle={`de ${overview.totalComContato.toLocaleString("pt-BR")} com mensagem do cliente`}
           />
           <StatCard
             icon={<Users2 className="h-4 w-4" />}
@@ -768,28 +771,46 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
         </div>
       </div>
 
-      {/* Comentários — visualmente separados: são auto-respondidos por bot, não é atendimento humano */}
-      <div className="rounded-xl border border-dashed border-border bg-muted/20 p-4 flex flex-wrap items-center gap-4">
-        <span className="flex items-center justify-center h-9 w-9 rounded-lg bg-muted text-muted-foreground shrink-0">
-          <Bot className="h-4 w-4" />
-        </span>
-        <div className="flex-1 min-w-[220px]">
-          <p className="text-sm font-medium">Comentários no Instagram</p>
-          <p className="text-xs text-muted-foreground">
-            Comentário em post, respondido automaticamente pelo ManyChat — não conta como atendimento
-            feito por uma pessoa, por isso fica separado das métricas acima.
-          </p>
+      {/* Infoproduto e comentários — automação, não atendimento humano. Separados
+          visualmente pra não contaminar as métricas de time acima. */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-dashed border-border bg-muted/20 p-4 flex flex-wrap items-center gap-4">
+          <span className="flex items-center justify-center h-9 w-9 rounded-lg bg-muted text-muted-foreground shrink-0">
+            <Bot className="h-4 w-4" />
+          </span>
+          <div className="flex-1 min-w-[180px]">
+            <p className="text-sm font-medium">Infoproduto (automação)</p>
+            <p className="text-xs text-muted-foreground">
+              Cliente escreveu e só recebeu resposta de bot/ManyChat — nenhuma pessoa do time
+              participou. É o funil automático funcionando, não uma falha de atendimento.
+            </p>
+          </div>
+          <span className="text-xl font-bold font-heading text-muted-foreground shrink-0">
+            {overview.totalInfoproduto.toLocaleString("pt-BR")}
+          </span>
         </div>
-        <span className="text-xl font-bold font-heading text-muted-foreground shrink-0">
-          {overview.totalComments.toLocaleString("pt-BR")}
-        </span>
+        <div className="rounded-xl border border-dashed border-border bg-muted/20 p-4 flex flex-wrap items-center gap-4">
+          <span className="flex items-center justify-center h-9 w-9 rounded-lg bg-muted text-muted-foreground shrink-0">
+            <Bot className="h-4 w-4" />
+          </span>
+          <div className="flex-1 min-w-[180px]">
+            <p className="text-sm font-medium">Comentários no Instagram</p>
+            <p className="text-xs text-muted-foreground">
+              Comentário em post, respondido automaticamente pelo ManyChat — engajamento, não
+              conversa.
+            </p>
+          </div>
+          <span className="text-xl font-bold font-heading text-muted-foreground shrink-0">
+            {overview.totalComments.toLocaleString("pt-BR")}
+          </span>
+        </div>
       </div>
 
       {unanswered.length > 0 && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/[0.04] p-4 space-y-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
             <AlertTriangle className="h-4 w-4" />
-            Leads que mandaram mensagem e nunca foram respondidos
+            Leads que mandaram mensagem e não receberam nenhuma resposta (nem bot, nem humano)
             <Badge variant="destructive" className="text-[10px]">
               {unanswered.length}
             </Badge>
@@ -830,9 +851,10 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
                 <TableHead>Canal</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Chats</TableHead>
+                <TableHead className="text-right">Infoproduto</TableHead>
                 <TableHead className="text-right">Comentários</TableHead>
-                <TableHead className="text-right">Nunca respondidos</TableHead>
-                <TableHead className="text-right">Tempo médio de resposta</TableHead>
+                <TableHead className="text-right">Sem resposta</TableHead>
+                <TableHead className="text-right">Tempo médio (humano)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -854,6 +876,7 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
                     )}
                   </TableCell>
                   <TableCell className="text-right">{c.total}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">{c.totalInfoproduto}</TableCell>
                   <TableCell className="text-right text-muted-foreground">{c.totalComments}</TableCell>
                   <TableCell className="text-right">
                     {c.nuncaRespondido > 0 ? <Badge variant="destructive">{c.nuncaRespondido}</Badge> : "0"}
@@ -929,8 +952,9 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
               <TableRow>
                 <TableHead>Origem</TableHead>
                 <TableHead className="text-right">Chats</TableHead>
-                <TableHead className="text-right">Nunca respondidos</TableHead>
-                <TableHead className="text-right">Tempo médio de resposta</TableHead>
+                <TableHead className="text-right">Infoproduto</TableHead>
+                <TableHead className="text-right">Sem resposta</TableHead>
+                <TableHead className="text-right">Tempo médio (humano)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -938,6 +962,7 @@ function AtendimentoTab({ filters }: { filters: ClintFilters }) {
                 <TableRow key={o.originName}>
                   <TableCell className="font-medium">{o.originName}</TableCell>
                   <TableCell className="text-right">{o.total}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">{o.totalInfoproduto}</TableCell>
                   <TableCell className="text-right">
                     {o.nuncaRespondido > 0 ? (
                       <Badge variant="destructive">{o.nuncaRespondido}</Badge>

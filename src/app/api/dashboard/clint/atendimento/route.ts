@@ -8,15 +8,25 @@ import pool from "@/lib/db";
 // desconectados, e contatos conversando em mais de um canal ao mesmo tempo.
 // Protegido pelo prefixo /api/dashboard em src/proxy.ts (sessão master).
 //
-// IMPORTANTE: mensagens diretas (DM) e comentários de Instagram
-// (content_type = 'COMMENT') são coisas bem diferentes — um comentário
-// costuma ser respondido automaticamente pelo ManyChat via DM, não é uma
-// conversa em si. Os campos first_customer_message_at/first_response_at
-// que vêm prontos da Clint no chat tratam o comentário como se fosse a
-// "primeira mensagem do cliente", o que distorce tempo de resposta e status
-// de "nunca respondido". Por isso todo tempo de resposta/status de resposta
-// aqui é recalculado a partir das mensagens (excluindo COMMENT), não a
-// partir desses campos do chat. Comentários aparecem à parte, em `comments`.
+// IMPORTANTE — três categorias bem diferentes, tratadas separadamente:
+//
+// 1. Comentários de Instagram (content_type = 'COMMENT') — engajamento em
+//    post, não é conversa. Aparecem à parte em `comments`.
+// 2. Infoproduto/automação — chats onde o cliente mandou mensagem e só
+//    recebeu resposta de bot/automação (ManyChat), NUNCA de uma pessoa do
+//    time (mensagem com user_id preenchido). É o funil de entrega
+//    automática funcionando como projetado, não uma falha de atendimento.
+// 3. Atendimento humano — chats onde uma pessoa do time (user_id
+//    preenchido numa mensagem não-CUSTOMER) participou em algum momento.
+//    Tempo de resposta e "nunca respondido" são calculados só aqui, com
+//    base na PRIMEIRA resposta humana (não a primeira resposta de
+//    qualquer tipo) — senão uma resposta automática instantânea do bot
+//    faz o time parecer muito mais rápido/presente do que realmente está.
+//
+// Os campos first_customer_message_at/first_response_at que vêm prontos da
+// Clint no chat misturam tudo isso (comentário, bot, humano) numa métrica
+// só, por isso são ignorados aqui — tudo é recalculado a partir das
+// mensagens (excluindo COMMENT), olhando quem mandou cada uma.
 //
 // Suporta os mesmos filtros de data/produto/funil do resumo geral
 // (?from=YYYY-MM-DD&to=YYYY-MM-DD&product=...&origin=...), aplicados sobre o
@@ -80,9 +90,10 @@ export async function GET(req: NextRequest) {
     const chatFilter = buildChatFilterClause(filters, 1);
     const limitIndex = chatFilter.params.length + 1;
 
-    // filtered_chats: chats dentro do filtro de data/produto.
-    // direct_pairs: por chat, primeira mensagem do cliente e primeira
-    //   resposta (do time/bot), olhando só mensagens que NÃO são comentário.
+    // filtered_chats: chats dentro do filtro de data/produto/funil.
+    // direct_pairs: por chat, primeira mensagem do cliente, primeira
+    //   resposta HUMANA (user_id preenchido) e se já teve resposta de bot
+    //   (user_id nulo) — olhando só mensagens que NÃO são comentário.
     // comment_counts: quantos comentários cada chat recebeu.
     const statsCte = `
       WITH filtered_chats AS (
@@ -93,7 +104,9 @@ export async function GET(req: NextRequest) {
         SELECT
           m.chat_id,
           MIN(m.clint_created_at) FILTER (WHERE m.type = 'CUSTOMER') AS first_customer_at,
-          MIN(m.clint_created_at) FILTER (WHERE m.type != 'CUSTOMER') AS first_user_at,
+          MIN(m.clint_created_at) FILTER (WHERE m.type != 'CUSTOMER' AND m.user_id IS NOT NULL) AS first_human_at,
+          BOOL_OR(m.type != 'CUSTOMER' AND m.user_id IS NOT NULL) AS has_human_reply,
+          BOOL_OR(m.type != 'CUSTOMER' AND m.user_id IS NULL) AS has_bot_reply,
           COUNT(*) AS direct_count
         FROM clint_messages m
         JOIN filtered_chats fc ON fc.id = m.chat_id
@@ -126,12 +139,16 @@ export async function GET(req: NextRequest) {
           (SELECT COALESCE(SUM(direct_count), 0) FROM direct_pairs) AS total_direct_messages,
           (SELECT COALESCE(SUM(comment_count), 0) FROM comment_counts) AS total_comments,
           (SELECT COUNT(*) FROM direct_pairs WHERE first_customer_at IS NOT NULL) AS total_com_contato,
+          (SELECT COUNT(*) FROM direct_pairs WHERE has_human_reply) AS total_atendimento_humano,
           (SELECT COUNT(*) FROM direct_pairs
-             WHERE first_customer_at IS NOT NULL AND (first_user_at IS NULL OR first_user_at < first_customer_at)
+             WHERE first_customer_at IS NOT NULL AND has_bot_reply AND NOT has_human_reply
+          ) AS total_infoproduto,
+          (SELECT COUNT(*) FROM direct_pairs
+             WHERE first_customer_at IS NOT NULL AND NOT has_human_reply AND NOT has_bot_reply
           ) AS nunca_respondido,
-          (SELECT AVG(EXTRACT(EPOCH FROM (first_user_at - first_customer_at)) / 60)
+          (SELECT AVG(EXTRACT(EPOCH FROM (first_human_at - first_customer_at)) / 60)
              FROM direct_pairs
-             WHERE first_user_at IS NOT NULL AND first_customer_at IS NOT NULL AND first_user_at >= first_customer_at
+             WHERE first_human_at IS NOT NULL AND first_customer_at IS NOT NULL AND first_human_at >= first_customer_at
           ) AS avg_response_minutes
         `,
         chatFilter.params
@@ -142,9 +159,10 @@ export async function GET(req: NextRequest) {
         SELECT
           COALESCE(orig.name, 'Sem origem') AS origin_name,
           COUNT(*) AS total,
-          COUNT(*) FILTER (WHERE dp.first_customer_at IS NOT NULL AND (dp.first_user_at IS NULL OR dp.first_user_at < dp.first_customer_at)) AS nunca_respondido,
-          AVG(EXTRACT(EPOCH FROM (dp.first_user_at - dp.first_customer_at)) / 60)
-            FILTER (WHERE dp.first_user_at IS NOT NULL AND dp.first_customer_at IS NOT NULL AND dp.first_user_at >= dp.first_customer_at) AS avg_response_minutes
+          COUNT(*) FILTER (WHERE dp.has_bot_reply AND NOT dp.has_human_reply) AS total_infoproduto,
+          COUNT(*) FILTER (WHERE NOT dp.has_human_reply AND NOT dp.has_bot_reply) AS nunca_respondido,
+          AVG(EXTRACT(EPOCH FROM (dp.first_human_at - dp.first_customer_at)) / 60)
+            FILTER (WHERE dp.first_human_at IS NOT NULL AND dp.first_human_at >= dp.first_customer_at) AS avg_response_minutes
         FROM filtered_chats c
         JOIN direct_pairs dp ON dp.chat_id = c.id
         LEFT JOIN LATERAL (
@@ -166,7 +184,7 @@ export async function GET(req: NextRequest) {
                  c.last_message_at, c.status
           FROM filtered_chats c
           JOIN direct_pairs dp ON dp.chat_id = c.id
-          WHERE dp.first_customer_at IS NOT NULL AND (dp.first_user_at IS NULL OR dp.first_user_at < dp.first_customer_at)
+          WHERE dp.first_customer_at IS NOT NULL AND NOT dp.has_human_reply AND NOT dp.has_bot_reply
           ORDER BY c.last_message_at DESC NULLS LAST
           LIMIT $${limitIndex}
         )
@@ -210,9 +228,10 @@ export async function GET(req: NextRequest) {
           ch.status AS channel_status,
           COUNT(*) AS total,
           COALESCE(SUM(cc.comment_count), 0) AS total_comments,
-          COUNT(*) FILTER (WHERE dp.first_customer_at IS NOT NULL AND (dp.first_user_at IS NULL OR dp.first_user_at < dp.first_customer_at)) AS nunca_respondido,
-          AVG(EXTRACT(EPOCH FROM (dp.first_user_at - dp.first_customer_at)) / 60)
-            FILTER (WHERE dp.first_user_at IS NOT NULL AND dp.first_customer_at IS NOT NULL AND dp.first_user_at >= dp.first_customer_at) AS avg_response_minutes
+          COUNT(*) FILTER (WHERE dp.has_bot_reply AND NOT dp.has_human_reply) AS total_infoproduto,
+          COUNT(*) FILTER (WHERE dp.first_customer_at IS NOT NULL AND NOT dp.has_human_reply AND NOT dp.has_bot_reply) AS nunca_respondido,
+          AVG(EXTRACT(EPOCH FROM (dp.first_human_at - dp.first_customer_at)) / 60)
+            FILTER (WHERE dp.first_human_at IS NOT NULL AND dp.first_customer_at IS NOT NULL AND dp.first_human_at >= dp.first_customer_at) AS avg_response_minutes
         FROM filtered_chats c
         LEFT JOIN direct_pairs dp ON dp.chat_id = c.id
         LEFT JOIN comment_counts cc ON cc.chat_id = c.id
@@ -281,6 +300,8 @@ export async function GET(req: NextRequest) {
         totalChats: Number(overview.total_chats),
         totalDirectMessages: Number(overview.total_direct_messages),
         totalComments: Number(overview.total_comments),
+        totalAtendimentoHumano: Number(overview.total_atendimento_humano),
+        totalInfoproduto: Number(overview.total_infoproduto),
         totalComContato,
         nuncaRespondido,
         pctNuncaRespondido: totalComContato > 0 ? nuncaRespondido / totalComContato : null,
@@ -299,12 +320,14 @@ export async function GET(req: NextRequest) {
         channelStatus: r.channel_status,
         total: Number(r.total),
         totalComments: Number(r.total_comments),
+        totalInfoproduto: Number(r.total_infoproduto),
         nuncaRespondido: Number(r.nunca_respondido),
         avgResponseMinutes: r.avg_response_minutes ? Number(r.avg_response_minutes) : null,
       })),
       byOrigin: byOriginResult.rows.map((r) => ({
         originName: r.origin_name,
         total: Number(r.total),
+        totalInfoproduto: Number(r.total_infoproduto),
         nuncaRespondido: Number(r.nunca_respondido),
         avgResponseMinutes: r.avg_response_minutes ? Number(r.avg_response_minutes) : null,
       })),

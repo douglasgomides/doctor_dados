@@ -209,16 +209,19 @@ export interface ClintAtendimentoData {
     totalChats: number;
     totalDirectMessages: number;
     totalComments: number;
+    totalAtendimentoHumano: number;
+    totalInfoproduto: number;
     totalComContato: number;
     nuncaRespondido: number;
     pctNuncaRespondido: number | null;
     avgResponseMinutes: number | null;
   };
   channels: ClintChannelAccount[];
-  byChannel: (ClintChannelStat & { totalComments: number })[];
+  byChannel: (ClintChannelStat & { totalComments: number; totalInfoproduto: number })[];
   byOrigin: {
     originName: string;
     total: number;
+    totalInfoproduto: number;
     nuncaRespondido: number;
     avgResponseMinutes: number | null;
   }[];
