@@ -6,13 +6,14 @@ import {
   fetchTagsPage,
   fetchChatsForContact,
   fetchMessagesForChat,
+  fetchChannelAccounts,
   ClintContact,
   ClintDeal,
   ClintChat,
   ClintMessage,
 } from "@/lib/clint";
 
-export type ClintResource = "contacts" | "deals" | "origins" | "tags" | "messages";
+export type ClintResource = "contacts" | "deals" | "origins" | "tags" | "messages" | "channels";
 
 // Não existe endpoint da Clint pra listar chats/mensagens em massa — só por
 // contato/chat individualmente. Sincronizar os 61k+ contatos seria
@@ -493,6 +494,46 @@ async function syncFullResource(resource: "origins" | "tags"): Promise<ClintSync
   }
 }
 
+/** Só 3 registros hoje — busca tudo e upserta numa chamada só. */
+async function syncChannelAccounts(): Promise<ClintSyncResult> {
+  try {
+    const response = await fetchChannelAccounts();
+    if (response.data.length > 0) {
+      const now = new Date().toISOString();
+      const rows = response.data.map((c) => [c.id, c.name, c.type, c.status, c.identifier, now]);
+      await bulkUpsert(
+        "clint_channel_accounts",
+        ["id", "name", "type", "status", "identifier", "synced_at"],
+        rows,
+        "id"
+      );
+    }
+
+    await updateSyncState("channels", {
+      nextPage: 1,
+      totalPages: 1,
+      totalCount: response.data.length,
+      recordsSyncedLastRun: response.data.length,
+      status: "idle",
+      lastError: null,
+      completed: true,
+    });
+
+    return {
+      resource: "channels",
+      pagesSynced: 1,
+      recordsSynced: response.data.length,
+      done: true,
+      currentPage: 1,
+      totalPages: 1,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await updateSyncState("channels", { status: "error", lastError: message });
+    throw error;
+  }
+}
+
 export async function syncResource(
   resource: ClintResource,
   timeBudgetMs: number = DEFAULT_TIME_BUDGET_MS
@@ -502,6 +543,9 @@ export async function syncResource(
   }
   if (resource === "messages") {
     return syncMessages(timeBudgetMs);
+  }
+  if (resource === "channels") {
+    return syncChannelAccounts();
   }
   return syncFullResource(resource);
 }

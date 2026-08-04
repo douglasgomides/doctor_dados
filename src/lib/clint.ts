@@ -79,6 +79,14 @@ export interface ClintTag {
   color: string;
 }
 
+export interface ClintChannelAccount {
+  id: string;
+  name: string;
+  type: string; // "WHATSAPP_OFFICIAL" | "INSTAGRAM" | ...
+  status: string; // "CONNECTED" | "DISCONNECTED"
+  identifier: string;
+}
+
 // Endpoints v2 (chats/messages) usam um envelope de paginação em
 // snake_case, diferente do camelCase dos endpoints v1 (contacts/deals/
 // origins/tags) — confirmado manualmente contra a conta real.
@@ -172,4 +180,8 @@ export function fetchChatsForContact(contactId: string, page = 1, limit = 200) {
 
 export function fetchMessagesForChat(chatId: string, page = 1, limit = 200) {
   return clintRequest<ClintListResponseV2<ClintMessage>>(`/v2/messages/chat/${chatId}`, { page, limit });
+}
+
+export function fetchChannelAccounts() {
+  return clintRequest<ClintListResponseV2<ClintChannelAccount>>("/v2/channel-accounts", {});
 }

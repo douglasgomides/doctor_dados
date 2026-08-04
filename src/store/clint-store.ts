@@ -123,7 +123,34 @@ export interface ClintUnansweredChat {
   stage: string | null;
   value: number | null;
   originName: string | null;
+  channelName: string | null;
+  channelType: string | null;
   lastMessageContent: string | null;
+}
+
+export interface ClintChannelAccount {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  identifier: string;
+}
+
+export interface ClintChannelStat {
+  channelName: string;
+  channelType: string;
+  channelStatus: string | null;
+  total: number;
+  nuncaRespondido: number;
+  avgResponseMinutes: number | null;
+}
+
+export interface ClintMultiChannelContact {
+  contactId: string;
+  contactName: string;
+  channelCount: number;
+  channelNames: string[];
+  lastActivityAt: string | null;
 }
 
 export interface ClintAtendimentoData {
@@ -135,6 +162,8 @@ export interface ClintAtendimentoData {
     pctNuncaRespondido: number | null;
     avgResponseMinutes: number | null;
   };
+  channels: ClintChannelAccount[];
+  byChannel: ClintChannelStat[];
   byOrigin: {
     originName: string;
     total: number;
@@ -142,6 +171,7 @@ export interface ClintAtendimentoData {
     avgResponseMinutes: number | null;
   }[];
   unanswered: ClintUnansweredChat[];
+  multiChannelContacts: ClintMultiChannelContact[];
 }
 
 interface ClintState {

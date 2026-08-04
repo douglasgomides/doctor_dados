@@ -20,11 +20,13 @@ export const maxDuration = 60;
 // parou; a próxima chamada com o mesmo resource continua dali. Chame
 // repetidamente (n8n em loop, ou manualmente) até done=true.
 //
-// POST /api/automations/clint-sync?resource=contacts|deals|origins|tags|messages
+// POST /api/automations/clint-sync?resource=contacts|deals|origins|tags|messages|channels
 // "messages" sincroniza chats + mensagens (WhatsApp/Instagram) só dos
 // contatos com negócio associado — não existe endpoint da Clint pra listar
 // isso em massa, então cobrir os 61k+ contatos inteiros seria inviável.
-const VALID_RESOURCES: ClintResource[] = ["contacts", "deals", "origins", "tags", "messages"];
+// "channels" sincroniza as contas de canal (WhatsApp/Instagram) e seu
+// status de conexão — só 3 registros, uma chamada só.
+const VALID_RESOURCES: ClintResource[] = ["contacts", "deals", "origins", "tags", "messages", "channels"];
 
 export async function POST(req: NextRequest) {
   const secret = process.env.CLINT_SYNC_SECRET;

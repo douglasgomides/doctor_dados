@@ -357,4 +357,20 @@ export async function runMigrations(): Promise<void> {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_clint_messages_created_at ON clint_messages(clint_created_at);`
   );
+
+  // Referência de canais (WhatsApp Oficial, Instagram de cada perfil) — só
+  // 3 registros hoje, via GET /v2/channel-accounts. O campo `status`
+  // ("CONNECTED"/"DISCONNECTED") é crítico: um canal desconectado para de
+  // receber mensagens novas na Clint sem gerar nenhum alerta visível pra
+  // quem usa o CRM no dia a dia.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clint_channel_accounts (
+      id UUID PRIMARY KEY,
+      name VARCHAR(255),
+      type VARCHAR(30),
+      status VARCHAR(20),
+      identifier VARCHAR(255),
+      synced_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
 }

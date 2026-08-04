@@ -419,13 +419,15 @@ function AtendimentoTab() {
 
   if (!atendimento) return null;
 
-  const { overview, byOrigin, unanswered } = atendimento;
+  const { overview, byOrigin, byChannel, channels, unanswered, multiChannelContacts } = atendimento;
+  const disconnectedChannels = channels.filter((c) => c.status !== "CONNECTED");
 
-  if (overview.totalChats === 0) {
+  if (overview.totalChats === 0 && channels.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-card p-6 mt-4 text-sm text-muted-foreground">
         Nenhum chat sincronizado ainda. Rode a sincronização com{" "}
-        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">resource=messages</code> pra ver dados de
+        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">resource=messages</code> (e{" "}
+        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">resource=channels</code>) pra ver dados de
         atendimento aqui (cobre os contatos com negócio associado, priorizando os mais recentes).
       </div>
     );
@@ -433,6 +435,21 @@ function AtendimentoTab() {
 
   return (
     <div className="space-y-6 mt-4">
+      {disconnectedChannels.length > 0 && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/[0.07] p-4 space-y-2">
+          <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
+            <AlertTriangle className="h-4 w-4" />
+            {disconnectedChannels.length === 1 ? "Canal desconectado" : "Canais desconectados"} na Clint
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {disconnectedChannels.map((c) => `"${c.name}" (${c.type === "INSTAGRAM" ? "@" + c.identifier : c.identifier})`).join(", ")}
+            {" — "}
+            mensagens novas desses canais provavelmente não estão sendo capturadas pela Clint agora.
+            Reconecte no painel da Clint (Configurações → Canais) o quanto antes.
+          </p>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           icon={<MessageCircleWarning className="h-4 w-4" />}
@@ -474,7 +491,8 @@ function AtendimentoTab() {
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="font-medium text-sm">{u.contactName}</span>
                   <span className="text-xs text-muted-foreground">
-                    mensagem {timeSince(u.firstCustomerMessageAt)} · {u.originName || "sem origem"}
+                    mensagem {timeSince(u.firstCustomerMessageAt)}
+                    {u.channelName ? ` · ${u.channelName}` : ""} · {u.originName || "sem origem"}
                   </span>
                 </div>
                 {u.lastMessageContent && (
@@ -486,6 +504,79 @@ function AtendimentoTab() {
                     {u.value ? ` · ${formatBRL(u.value)}` : ""}
                   </p>
                 )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {byChannel.length > 0 && (
+        <div className="rounded-xl border border-border overflow-hidden overflow-x-auto">
+          <div className="px-4 pt-4 pb-1">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Atendimento por canal (WhatsApp × Instagram)
+            </p>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Canal</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Chats</TableHead>
+                <TableHead className="text-right">Nunca respondidos</TableHead>
+                <TableHead className="text-right">Tempo médio de resposta</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {byChannel.map((c) => (
+                <TableRow key={c.channelName}>
+                  <TableCell className="font-medium">
+                    {c.channelName}
+                    <span className="text-muted-foreground font-normal"> · {c.channelType}</span>
+                  </TableCell>
+                  <TableCell>
+                    {c.channelStatus === "CONNECTED" ? (
+                      <Badge variant="outline" className="text-emerald-600 border-emerald-600/40">
+                        Conectado
+                      </Badge>
+                    ) : c.channelStatus ? (
+                      <Badge variant="destructive">Desconectado</Badge>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">{c.total}</TableCell>
+                  <TableCell className="text-right">
+                    {c.nuncaRespondido > 0 ? <Badge variant="destructive">{c.nuncaRespondido}</Badge> : "0"}
+                  </TableCell>
+                  <TableCell className="text-right">{formatMinutes(c.avgResponseMinutes)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {multiChannelContacts.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Users2 className="h-4 w-4 text-primary" />
+            Contatos conversando em mais de um canal ({multiChannelContacts.length})
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Podem estar mandando mensagem simultaneamente pelo WhatsApp e pelo Instagram — vale unificar o
+            atendimento pra não responder duplicado (ou pior, deixar um dos dois sem resposta).
+          </p>
+          <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+            {multiChannelContacts.map((m) => (
+              <div
+                key={m.contactId}
+                className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background p-2.5 text-sm"
+              >
+                <span className="font-medium truncate">{m.contactName}</span>
+                <span className="text-xs text-muted-foreground text-right shrink-0">
+                  {m.channelNames.join(" + ")} · {timeSince(m.lastActivityAt)}
+                </span>
               </div>
             ))}
           </div>
