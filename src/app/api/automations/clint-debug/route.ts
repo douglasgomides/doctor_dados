@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { fetchMessagesForChat } from "@/lib/clint";
 
 // Endpoint de diagnóstico, só leitura, pra inspecionar o formato real das
 // mensagens já sincronizadas de um canal específico (ex: Instagram) sem
@@ -24,6 +25,22 @@ export async function GET(req: NextRequest) {
   const channelType = req.nextUrl.searchParams.get("channelType") || "INSTAGRAM";
   const limit = Math.min(50, Math.max(1, Number(req.nextUrl.searchParams.get("limit")) || 25));
   const chatIds = req.nextUrl.searchParams.getAll("chatId");
+  const liveChatId = req.nextUrl.searchParams.get("liveChatId");
+
+  // Modo "live": chama a API REST oficial da Clint (a mesma que já usamos
+  // pra sincronizar) direto pra esse chat_id, sem passar pelo nosso banco —
+  // pra testar se /v2/messages/chat/{chatId} reconhece um chat_id visto no
+  // painel de Atendimento (GraphQL interno), mesmo que a gente nunca tenha
+  // chegado nele via /v2/chats/contact/{contactId}.
+  if (liveChatId) {
+    try {
+      const response = await fetchMessagesForChat(liveChatId, 1, 30);
+      return NextResponse.json({ liveChatId, response });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido.";
+      return NextResponse.json({ liveChatId, error: message });
+    }
+  }
 
   // Modo "lookup": dado um ou mais chat_id vistos no console/rede do painel
   // da Clint (ex: ?chatId=xxx&chatId=yyy), diz se cada um já existe no que
